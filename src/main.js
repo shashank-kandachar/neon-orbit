@@ -1,29 +1,74 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.11';
-import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.11';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.11';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.11';
-import { formatPitchSummary, getPitchContext } from './pitch-utils.js?v=keyfirst3.11';
-import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js?v=keyfirst3.11';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.11';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.15';
+import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.15';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.15';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.15';
+import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.15';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot } from './storage.js?v=keyfirst3.15';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.15';
 
 const SETUP_SCREENS = [
-  { id: 'start', type: 'start', label: 'Start', blurb: 'A calm start before the app serves prompts.' },
-  { id: 'pitch', type: 'setup', label: 'Key + scale', blurb: 'Choose the tonic note first, then choose the scale, mode or raga behaviour.' },
-  { id: 'motion', type: 'setup', label: 'Motion', blurb: 'Choose tempo and groove feel.' },
-  { id: 'identity', type: 'setup', label: 'Identity', blurb: 'Choose mood, role and energy.' },
-  { id: 'source', type: 'setup', label: 'Source', blurb: 'Choose the main instrument, gear focus and knowledge lanes.' },
+  { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
+  { id: 'setup', type: 'setup', label: 'Setup', blurb: 'Choose the key world, pulse and section intent in one place.' },
 ];
 
-const SCREENS = [...SETUP_SCREENS, ...STAGES.map((stage) => ({ ...stage, type: 'build' }))];
+const BUILD_PHASES = [
+  {
+    id: 'direction',
+    type: 'build',
+    label: 'Direction',
+    blurb: 'Shape the section job, pitch use and rhythmic intention.',
+    stageIds: ['section_identity', 'pitch_material', 'tempo_groove', 'section_role'],
+  },
+  {
+    id: 'foundation',
+    type: 'build',
+    label: 'Foundation',
+    blurb: 'Build the rhythm, bass and harmonic ground.',
+    stageIds: ['rhythmic_foundation', 'bass_pulse', 'harmony_drone'],
+  },
+  {
+    id: 'colour',
+    type: 'build',
+    label: 'Hooks + colour',
+    blurb: 'Find a motif, add texture and make the sound move.',
+    stageIds: ['motif_hook', 'texture_layer', 'movement_modulation'],
+  },
+  {
+    id: 'arrange',
+    type: 'build',
+    label: 'Arrange + perform',
+    blurb: 'Shape transitions, space, live translation and finish notes.',
+    stageIds: ['arrangement_arc', 'transitions', 'mix_space', 'live_translation', 'finish_review'],
+  },
+];
+
+const SCREENS = [...SETUP_SCREENS, ...BUILD_PHASES];
+const STAGE_BY_ID = Object.fromEntries(STAGES.map((stage) => [stage.id, stage]));
+
+const GROOVE_GUIDANCE = {
+  'Straight 4/4': 'Put the kick or main pulse in the body first. Let guitar and synth answer around it instead of filling every gap.',
+  'Triplet / swung': 'Let the groove lean forward. Keep one part straight so the swing feels intentional rather than loose.',
+  'Off-beat pulse': 'Place the hook or slice between the main beats. Use the downbeat as a return point, not the whole story.',
+  'Hypnotic ostinato': 'Choose a short repeating cell and change tone, filter or accent slowly over time.',
+  Polyrhythmic: 'Keep one layer simple and let another cycle across it. Count the return point before adding more parts.',
+  'Broken beat': 'Leave air around the backbeat. Let ghost notes, field sounds or muted guitar make the rhythm breathe.',
+  'Downtempo roll': 'Keep the low end relaxed and warm. Use small syncopations so the section moves without rushing.',
+  'Psytrance drive': 'Lock the bass and kick relationship first. Add movement above it, not clutter inside it.',
+  'Ambient free pulse': 'Use repeated swells, delays or gestures as the pulse. Let tempo be felt rather than counted.',
+  'Indian cyclic feel': 'Choose a cycle length and mark the return clearly. Let melodic phrases lean towards that return.',
+};
 
 const state = {
   bootstrap: null,
   ideas: null,
+  song: null,
   profile: { ...DEFAULT_PROFILE },
   plan: {},
+  phaseFocus: {},
   screenIndex: 0,
   prompts: [],
   traceIdea: null,
+  utilityPanel: 'section',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -42,6 +87,9 @@ const els = {
   saveBtn: $('saveBtn'),
   exportMdBtn: $('exportMdBtn'),
   exportJsonBtn: $('exportJsonBtn'),
+  utilityPanel: $('utilityPanel'),
+  utilityPanelTitle: $('utilityPanelTitle'),
+  panelCloseBtn: $('panelCloseBtn'),
   sectionSummary: $('sectionSummary'),
   planSummary: $('planSummary'),
   tracePanel: $('tracePanel'),
@@ -71,10 +119,21 @@ function currentScreen() {
   return SCREENS[state.screenIndex] || SCREENS[0];
 }
 
+function createDraftSong() {
+  return {
+    id: `song_${Date.now()}`,
+    title: 'New Song',
+    sections: [],
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function saveAppState() {
   saveState({
+    song: state.song,
     profile: state.profile,
     plan: state.plan,
+    phaseFocus: state.phaseFocus,
     screenIndex: state.screenIndex,
     traceIdea: state.traceIdea,
   });
@@ -82,8 +141,14 @@ function saveAppState() {
 
 function hydrateState() {
   const stored = loadState();
-  if (!stored) return;
+  if (!stored) {
+    state.song = createDraftSong();
+    return;
+  }
+  state.song = stored.song || createDraftSong();
   state.profile = { ...DEFAULT_PROFILE, ...(stored.profile || {}) };
+  state.profile.noteSpelling = state.profile.noteSpelling || 'sharps';
+  state.profile.keyRoot = state.profile.keyRoot || DEFAULT_PROFILE.keyRoot;
   state.profile.pitchPath = state.profile.pitchPath || (state.profile.selectedRaga ? 'raga' : 'scale');
   if (!['scale', 'raga'].includes(state.profile.pitchPath)) state.profile.pitchPath = 'scale';
   if (state.profile.pitchPath === 'scale') {
@@ -91,7 +156,8 @@ function hydrateState() {
     normaliseScalePitchWorld();
   }
   state.plan = stored.plan || {};
-  state.screenIndex = stored.screenIndex || stored.currentIndex || 0;
+  state.phaseFocus = stored.phaseFocus || {};
+  state.screenIndex = 0;
   state.traceIdea = stored.traceIdea || null;
 }
 
@@ -105,20 +171,34 @@ function optionList(values, selected = '', emptyLabel = '') {
 }
 
 function isDone(screen) {
-  if (screen.id === 'start') return true;
-  if (screen.id === 'pitch') {
+  if (screen.id === 'song') return Boolean(state.song);
+  if (screen.id === 'setup') {
     if (activePitchPath() === 'raga') return Boolean(state.profile.keyRoot && state.profile.selectedRaga);
-    return Boolean(state.profile.keyRoot && state.profile.pitchWorld);
+    return Boolean(state.profile.keyRoot && state.profile.pitchWorld && state.profile.tempo && state.profile.groove && state.profile.mood && state.profile.sectionType);
   }
-  if (screen.id === 'motion') return Boolean(state.profile.tempo && state.profile.groove);
-  if (screen.id === 'identity') return Boolean(state.profile.mood && state.profile.sectionType && state.profile.energy);
-  if (screen.id === 'source') return Boolean(state.profile.instrument);
-  if (screen.type === 'build') return Boolean(state.plan[screen.id]);
+  if (screen.type === 'build') return (screen.stageIds || []).some((stageId) => Boolean(state.plan[stageId]));
   return false;
 }
 
 function selectedBuildCount() {
   return Object.keys(state.plan).length;
+}
+
+function activeStageId(screen = currentScreen()) {
+  if (!screen?.stageIds?.length) return screen?.id;
+  const selected = state.phaseFocus[screen.id];
+  return screen.stageIds.includes(selected) ? selected : screen.stageIds[0];
+}
+
+function activeStage(screen = currentScreen()) {
+  return STAGE_BY_ID[activeStageId(screen)] || STAGES[0];
+}
+
+function phaseCompletion(screen) {
+  const stageIds = screen.stageIds || [];
+  if (!stageIds.length) return '';
+  const done = stageIds.filter((stageId) => state.plan[stageId]).length;
+  return `${done} / ${stageIds.length}`;
 }
 
 function enrichedPlan() {
@@ -136,6 +216,7 @@ function payload() {
   return {
     id: `section_${Date.now()}`,
     createdAt: new Date().toISOString(),
+    song: state.song,
     profile: state.profile,
     summary: buildSectionSummary(state.profile, plan),
     plan,
@@ -161,7 +242,7 @@ function activePitchPath() {
 }
 
 function currentKeyLabel() {
-  const root = state.profile.keyRoot || '—';
+  const root = state.profile.keyRoot ? normaliseKeyRoot(state.profile.keyRoot, state.profile.noteSpelling) : '—';
   if (activePitchPath() === 'raga') {
     return `${root} ${state.profile.selectedRaga || 'raga'}`.trim();
   }
@@ -198,6 +279,39 @@ function cleanTimeWindow(value = '') {
   return `${text.slice(0, 90).replace(/\s+\S*$/, '')}...`;
 }
 
+function grooveGuidance() {
+  return GROOVE_GUIDANCE[state.profile.groove] || 'Choose one clear pulse and let the arrangement grow around it.';
+}
+
+function tempoGuidance() {
+  const tempo = Number(state.profile.tempo || 0);
+  if (tempo < 80) return 'A slow tempo leaves space for texture, reverse delays and long guitar phrases.';
+  if (tempo < 116) return 'A mid-tempo pulse is good for hypnotic live-electronic sections with room for guitar.';
+  if (tempo < 140) return 'This range can drive a section without becoming frantic. Keep the low end disciplined.';
+  return 'Fast tempos need simple anchors. Keep the bass/kick logic obvious before adding motion.';
+}
+
+function savedSections() {
+  return loadSavedPlans();
+}
+
+function setUtilityPanel(panel = 'section', open = true) {
+  if (!els.utilityPanel) return;
+  state.utilityPanel = panel;
+  const labels = {
+    section: 'Current section',
+    plan: 'Chosen prompts',
+    trace: 'Source trace',
+    search: 'Find ideas',
+  };
+  els.utilityPanelTitle.textContent = labels[panel] || 'Section';
+  els.utilityPanel.querySelectorAll('[data-panel-view]').forEach((view) => {
+    view.classList.toggle('is-active', view.dataset.panelView === panel);
+  });
+  els.utilityPanel.classList.toggle('hidden', !open);
+  els.utilityPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+}
+
 function renderStatus() {
   const manifest = state.bootstrap.manifest;
   els.statusCard.innerHTML = `
@@ -212,33 +326,33 @@ function renderStepStrip() {
   els.stepStrip.innerHTML = SCREENS.map((screen, index) => `
     <button class="step-button ${index === state.screenIndex ? 'active' : ''} ${isDone(screen) ? 'done' : ''}" data-step="${index}">
       <strong>${index + 1}. ${escapeHtml(screen.label.replace(/^\d+\.\s*/, ''))}</strong>
-      <span>${screen.type === 'build' ? 'build' : 'setup'}</span>
+      <span>${screen.type === 'build' ? phaseCompletion(screen) : screen.type}</span>
     </button>
   `).join('');
 }
 
 function renderScreenHeader() {
   const screen = currentScreen();
-  els.screenKicker.textContent = screen.type === 'build' ? 'Build step' : 'Setup';
+  const stage = screen.type === 'build' ? activeStage(screen) : null;
+  els.screenKicker.textContent = screen.type === 'build' ? 'Composition phase' : screen.type === 'song' ? 'Song workspace' : 'Section setup';
   els.screenTitle.textContent = screen.label.replace(/^\d+\.\s*/, '');
-  els.screenBlurb.textContent = screen.blurb || '';
-  els.progressPill.textContent = `Step ${state.screenIndex + 1} / ${SCREENS.length} · ${selectedBuildCount()} / ${STAGES.length} prompts`;
+  els.screenBlurb.textContent = stage ? `${screen.blurb} Focus: ${stage.label.replace(/^\d+\.\s*/, '')}.` : (screen.blurb || '');
+  els.progressPill.textContent = `${state.screenIndex + 1} / ${SCREENS.length} · ${selectedBuildCount()} ideas chosen`;
   els.backBtn.disabled = state.screenIndex === 0;
-  els.nextBtn.textContent = state.screenIndex === SCREENS.length - 1 ? 'Finish' : 'Next';
+  els.nextBtn.textContent = state.screenIndex === SCREENS.length - 1 ? 'Review' : 'Next';
   els.inspireBtn.style.display = screen.type === 'build' ? 'inline-flex' : 'none';
 }
 
 function renderSectionSummary() {
   const p = state.profile;
   const rows = [
+    ['Song', state.song?.title || 'New Song'],
     ['Key', currentKeyLabel()],
     ['Tempo', p.tempo ? `${p.tempo} BPM` : '—'],
-    ['Mood', p.mood],
-    ['Section', p.sectionType],
-    ['Energy', p.energy],
     ['Groove', p.groove],
-    ['Source', p.instrument],
-    ['Gear', (p.gearFocus || []).join(', ') || 'None'],
+    ['Section', p.sectionType],
+    ['Mood', p.mood],
+    ['Energy', p.energy],
   ];
   els.sectionSummary.innerHTML = rows.map(([label, value]) => `
     <div class="mini-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>
@@ -280,16 +394,131 @@ function renderTracePanel() {
   `;
 }
 
-function renderStart() {
+function renderSongEntry() {
+  const sections = savedSections().slice(0, 10);
   els.wizardBody.innerHTML = `
-    <div class="info-card wide">
-      <h3>One decision at a time.</h3>
-      <p>This version avoids the earlier dashboard clutter. Setup happens first, then the app gives you only three focused prompt cards per musical layer.</p>
+    <div class="song-entry">
+      <button type="button" class="entry-card primary-entry" data-new-song>
+        <span class="mini-label">Start fresh</span>
+        <strong>New Song</strong>
+        <em>Begin with one section, then save it into the local song workspace.</em>
+      </button>
+
+      <div class="entry-card existing-entry">
+        <span class="mini-label">Local workspace</span>
+        <strong>Existing Song</strong>
+        <em>Open a saved section and keep building the track from there.</em>
+        <div class="section-list">
+          ${sections.length ? sections.map((section) => `
+            <button type="button" class="section-row" data-open-section="${escapeHtml(section.id)}">
+              <span>${escapeHtml(section.summary?.title || section.profile?.sectionType || 'Saved section')}</span>
+              <strong>${escapeHtml(section.profile ? `${section.profile.sectionType || 'Section'} · ${section.profile.keyRoot || ''} ${section.profile.selectedRaga || section.profile.pitchWorld || ''}` : 'Saved section')}</strong>
+            </button>
+          `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`}
+        </div>
+      </div>
     </div>
-    <div class="card-grid three">
-      <div class="field-card"><h3>1. Define</h3><p>Pitch, tempo, mood, groove and sound source.</p></div>
-      <div class="field-card"><h3>2. Build</h3><p>Move through rhythm, bass, harmony, motif, texture, movement and arrangement.</p></div>
-      <div class="field-card"><h3>3. Capture</h3><p>Save or export the section plan with source trace intact.</p></div>
+  `;
+}
+
+function renderSetup() {
+  state.profile.noteSpelling = state.profile.noteSpelling || 'sharps';
+  state.profile.keyRoot = normaliseKeyRoot(state.profile.keyRoot || DEFAULT_PROFILE.keyRoot, state.profile.noteSpelling);
+  const ragas = state.bootstrap.ragaData.cards.map((card) => card.name);
+  const path = activePitchPath();
+  const selectedRaga = selectedRagaCard();
+  const pitchContext = getPitchContext(state.profile, selectedRaga);
+  const pitchSummary = formatPitchSummary(state.profile, selectedRaga);
+  const keyRoots = APP_OPTIONS.keyRoots || ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const scaleWorlds = (APP_OPTIONS.pitchWorlds || []).filter((world) => world !== 'Raga-driven');
+  if (state.profile.pitchWorld && !scaleWorlds.includes(state.profile.pitchWorld)) scaleWorlds.push(state.profile.pitchWorld);
+  const keyLabel = currentKeyLabel();
+  const root = state.profile.keyRoot || 'D';
+  const intervals = pitchContext.intervals?.length ? pitchContext.intervals.join(' - ') : 'No fixed interval set yet';
+  const notes = pitchContext.notes?.length
+    ? pitchContext.notes.join(', ')
+    : path === 'raga'
+      ? `${root} is Sa/home. Choose a raga to see a common pitch reference.`
+      : `${root} is home. Keep the note set small until the section has a clear centre.`;
+  const ragaInfo = pitchContext.ragaInfo || null;
+  const ragaFeatures = cleanedRagaFeatures(selectedRaga);
+  const sourceLine = selectedRaga?.source ? `Source trace: ${selectedRaga.source}` : '';
+  const ragaBehaviour = [
+    pitchSummary.tip,
+    `Keep a drone or bass anchor on ${root}, then write one short phrase that returns to Sa before adding extra notes.`,
+    ...ragaFeatures,
+  ].filter(Boolean).filter((feature, index, list) => list.indexOf(feature) === index).slice(0, 3);
+
+  els.wizardBody.innerHTML = `
+    <div class="setup-workspace">
+      <section class="setup-panel setup-pitch-panel">
+        <div class="setup-section-head">
+          <span class="mini-label">Key world</span>
+          <h3>${escapeHtml(keyLabel)}</h3>
+        </div>
+
+        <div class="pitch-path-grid compact" role="group" aria-label="Choose pitch route">
+          <button type="button" class="pitch-path-card ${path === 'scale' ? 'is-selected' : ''}" data-pitch-path="scale" aria-pressed="${path === 'scale'}">
+            <span>Scale / mode</span>
+            <strong>Notes and intervals</strong>
+          </button>
+          <button type="button" class="pitch-path-card ${path === 'raga' ? 'is-selected' : ''}" data-pitch-path="raga" aria-pressed="${path === 'raga'}">
+            <span>Raga</span>
+            <strong>Behaviour first</strong>
+          </button>
+        </div>
+
+        <div class="note-grid compact" role="list" aria-label="Choose tonic note">
+          ${keyRoots.map((note) => `
+            <button type="button" class="note-button ${note === state.profile.keyRoot ? 'is-selected' : ''}" data-key-root="${escapeHtml(note)}">
+              ${escapeHtml(note)}
+            </button>
+          `).join('')}
+        </div>
+
+        ${path === 'scale' ? `
+          <label class="select-field"><span>Scale / mode</span>
+            <select data-profile="pitchWorld">${optionList(scaleWorlds, state.profile.pitchWorld)}</select>
+          </label>
+        ` : `
+          <label class="select-field"><span>Raga</span>
+            <select data-profile="selectedRaga">${optionList(ragas, state.profile.selectedRaga, 'Choose a raga')}</select>
+          </label>
+        `}
+
+        <div class="pitch-guide compact-guide">
+          <div class="pitch-detail-grid compact">
+            <div class="pitch-detail"><span>${path === 'raga' ? 'Common intervals' : 'Intervals'}</span><strong>${escapeHtml(intervals)}</strong></div>
+            <div class="pitch-detail"><span>${path === 'raga' ? `Notes from ${root} as Sa` : `Notes in ${keyLabel}`}</span><strong>${escapeHtml(notes)}</strong></div>
+          </div>
+          ${path === 'raga' && selectedRaga ? `
+            <p>${escapeHtml(cleanTimeWindow(ragaInfo?.timeWindow))}</p>
+            <ul class="pitch-feature-list">${ragaBehaviour.map((feature) => `<li>${escapeHtml(feature)}</li>`).join('')}</ul>
+            ${sourceLine ? `<p class="source-line">${escapeHtml(sourceLine)}</p>` : ''}
+          ` : `<p>${escapeHtml(pitchSummary.tip)}</p>`}
+        </div>
+      </section>
+
+      <section class="setup-panel setup-motion-panel">
+        <div class="setup-section-head">
+          <span class="mini-label">Pulse + identity</span>
+          <h3>${escapeHtml(state.profile.tempo)} BPM · ${escapeHtml(state.profile.groove)}</h3>
+        </div>
+
+        <div class="setup-grid">
+          <label class="select-field"><span>Tempo</span><input data-profile="tempo" type="number" min="40" max="220" value="${escapeHtml(state.profile.tempo)}"></label>
+          <label class="select-field"><span>Groove feel</span><select data-profile="groove">${optionList(APP_OPTIONS.grooveFeels, state.profile.groove)}</select></label>
+          <label class="select-field"><span>Section type</span><select data-profile="sectionType">${optionList(APP_OPTIONS.sectionTypes, state.profile.sectionType)}</select></label>
+          <label class="select-field"><span>Mood</span><select data-profile="mood">${optionList(APP_OPTIONS.moods, state.profile.mood)}</select></label>
+          <label class="select-field"><span>Energy</span><select data-profile="energy">${optionList(APP_OPTIONS.energyLevels, state.profile.energy)}</select></label>
+          <label class="select-field wide"><span>Short intent</span><textarea data-profile="notes" rows="3" placeholder="What should this section do in the song?">${escapeHtml(state.profile.notes || '')}</textarea></label>
+        </div>
+
+        <div class="guidance-strip">
+          <div><span>Tempo</span><p>${escapeHtml(tempoGuidance())}</p></div>
+          <div><span>Groove</span><p>${escapeHtml(grooveGuidance())}</p></div>
+        </div>
+      </section>
     </div>
   `;
 }
@@ -499,12 +728,15 @@ async function refreshPrompts({ inspiration = false } = {}) {
   if (screen.type !== 'build') return;
   const ok = await ensureIdeasLoaded();
   if (!ok) return;
-  state.prompts = generateStagePrompts(state.ideas, state.profile, screen.id, state.plan, { inspiration }).slice(0, 3);
+  const stageId = activeStageId(screen);
+  state.prompts = generateStagePrompts(state.ideas, state.profile, stageId, state.plan, { inspiration })
+    .slice(0, 3)
+    .map((idea) => ({ ...idea, _stageId: stageId }));
   renderBuild();
 }
 
 function renderPromptCard(idea, index) {
-  const presentation = ideaPresentation(idea);
+  const presentation = ideaPresentation(idea, idea._stageId || activeStageId());
   return `
     <article class="prompt-card ${index === 0 ? 'featured' : ''}">
       <div class="prompt-topline">
@@ -529,38 +761,58 @@ function renderPromptCard(idea, index) {
 
 function renderBuild() {
   const screen = currentScreen();
-  const chosen = state.plan[screen.id];
+  const stageId = activeStageId(screen);
+  const stage = activeStage(screen);
+  const chosen = state.plan[stageId];
+  const focusTabs = (screen.stageIds || []).map((id) => {
+    const item = STAGE_BY_ID[id];
+    const label = item?.label.replace(/^\d+\.\s*/, '') || id.replaceAll('_', ' ');
+    return `<button type="button" class="focus-chip ${id === stageId ? 'is-selected' : ''} ${state.plan[id] ? 'is-done' : ''}" data-phase-focus="${escapeHtml(id)}">${escapeHtml(label)}</button>`;
+  }).join('');
   if (chosen) {
-    const presentation = ideaPresentation(chosen, screen.id);
+    const presentation = ideaPresentation(chosen, stageId);
     els.wizardBody.innerHTML = `
-      <div class="info-card wide">
-        <span class="mini-label">Chosen for this step</span>
+      <div class="build-workspace">
+        <div class="phase-focus">${focusTabs}</div>
+        <div class="info-card wide chosen-idea">
+        <span class="mini-label">Chosen for ${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</span>
         <h3>${escapeHtml(presentation.title)}</h3>
         <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
         <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
         ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
         <div class="chips" style="margin-top:10px">${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
-        <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(chosen.id)}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(screen.id)}">Another idea</button></div>
+        <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(chosen.id)}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button></div>
+        </div>
       </div>
     `;
     return;
   }
   if (!state.prompts.length) {
     els.wizardBody.innerHTML = `
-      <div class="info-card wide"><h3>Ready for prompts</h3><p>The app will show only three plain-language ideas for this step.</p><div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal">Show ideas</button></div></div>
+      <div class="build-workspace">
+        <div class="phase-focus">${focusTabs}</div>
+        <div class="info-card wide">
+          <span class="mini-label">${escapeHtml(screen.label)}</span>
+          <h3>${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</h3>
+          <p>The app will show only three plain-language ideas for this focus. Switch focus above when you want a different part of the phase.</p>
+          <div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal">Show ideas</button></div>
+        </div>
+      </div>
     `;
     return;
   }
-  els.wizardBody.innerHTML = `<div class="stack">${state.prompts.map(renderPromptCard).join('')}</div>`;
+  els.wizardBody.innerHTML = `
+    <div class="build-workspace">
+      <div class="phase-focus">${focusTabs}</div>
+      <div class="prompt-scroll stack">${state.prompts.map(renderPromptCard).join('')}</div>
+    </div>
+  `;
 }
 
 function renderBody() {
   const screen = currentScreen();
-  if (screen.id === 'start') renderStart();
-  else if (screen.id === 'pitch') renderPitch();
-  else if (screen.id === 'motion') renderMotion();
-  else if (screen.id === 'identity') renderIdentity();
-  else if (screen.id === 'source') renderSource();
+  if (screen.id === 'song') renderSongEntry();
+  else if (screen.id === 'setup') renderSetup();
   else renderBuild();
 }
 
@@ -582,6 +834,9 @@ function setProfileFromInput(input) {
     if (input.checked) current.add(input.value);
     else current.delete(input.value);
     state.profile[name] = [...current];
+  } else if (name === 'noteSpelling') {
+    state.profile.noteSpelling = input.value;
+    state.profile.keyRoot = normaliseKeyRoot(state.profile.keyRoot || DEFAULT_PROFILE.keyRoot, state.profile.noteSpelling);
   } else if (name === 'tempo') {
     state.profile[name] = Number(input.value || 0);
   } else {
@@ -606,7 +861,7 @@ function stepTo(index) {
   state.prompts = [];
   renderAll();
   saveAppState();
-  if (currentScreen().type === 'build' && state.ideas && !state.plan[currentScreen().id]) refreshPrompts();
+  if (currentScreen().type === 'build' && state.ideas && !state.plan[activeStageId()]) refreshPrompts();
 }
 
 function next() {
@@ -624,9 +879,79 @@ function findVisibleIdea(id) {
   return all.find((idea) => idea.id === id) || null;
 }
 
+function startNewSong() {
+  state.song = createDraftSong();
+  state.profile = { ...DEFAULT_PROFILE };
+  state.plan = {};
+  state.phaseFocus = {};
+  state.prompts = [];
+  state.traceIdea = null;
+  state.screenIndex = 1;
+  renderAll();
+  saveAppState();
+}
+
+function openSavedSection(id) {
+  const section = savedSections().find((item) => item.id === id);
+  if (!section) {
+    toast('Saved section not found');
+    return;
+  }
+  const profile = { ...DEFAULT_PROFILE, ...(section.profile || {}) };
+  profile.noteSpelling = profile.noteSpelling || 'sharps';
+  profile.keyRoot = normaliseKeyRoot(profile.keyRoot || DEFAULT_PROFILE.keyRoot, profile.noteSpelling);
+  profile.pitchPath = profile.pitchPath || (profile.selectedRaga ? 'raga' : 'scale');
+  if (profile.pitchPath === 'scale') profile.selectedRaga = '';
+  state.song = section.song || {
+    id: `song_from_${section.id}`,
+    title: section.summary?.title || 'Existing Song',
+    sections: [section],
+    updatedAt: section.createdAt || new Date().toISOString(),
+  };
+  state.profile = profile;
+  state.plan = section.plan || {};
+  state.phaseFocus = {};
+  state.prompts = [];
+  state.traceIdea = null;
+  state.screenIndex = 1;
+  renderAll();
+  saveAppState();
+}
+
+function saveCurrentSection() {
+  const snapshot = payload();
+  savePlanSnapshot(snapshot);
+  state.song = {
+    ...(state.song || createDraftSong()),
+    updatedAt: new Date().toISOString(),
+    sections: [
+      {
+        id: snapshot.id,
+        title: snapshot.summary?.title || state.profile.sectionType || 'Section',
+        profile: snapshot.profile,
+        createdAt: snapshot.createdAt,
+      },
+      ...((state.song?.sections || []).filter((section) => section.id !== snapshot.id)),
+    ].slice(0, 24),
+  };
+  saveAppState();
+  renderSectionSummary();
+  toast('Saved locally');
+}
+
 function bindEvents() {
   const prepareMarkdownExport = (event) => exportPlanMarkdown(payload(), STAGES, event.currentTarget);
   const prepareJsonExport = (event) => exportPlanJson(payload(), event.currentTarget);
+
+  document.addEventListener('click', (event) => {
+    const panelButton = event.target.closest('[data-open-panel]');
+    if (panelButton) {
+      setUtilityPanel(panelButton.dataset.openPanel, true);
+      return;
+    }
+  });
+
+  els.panelCloseBtn?.addEventListener('click', () => setUtilityPanel(state.utilityPanel, false));
 
   els.stepStrip.addEventListener('click', (event) => {
     const button = event.target.closest('[data-step]');
@@ -643,10 +968,32 @@ function bindEvents() {
     const input = event.target.closest('[data-profile]');
     if (!input) return;
     setProfileFromInput(input);
-    if (currentScreen().id === 'pitch' || currentScreen().id === 'source') renderBody();
+    if (currentScreen().id === 'setup') renderBody();
   });
 
   els.wizardBody.addEventListener('click', (event) => {
+    const newSong = event.target.closest('[data-new-song]');
+    if (newSong) {
+      startNewSong();
+      return;
+    }
+
+    const openSection = event.target.closest('[data-open-section]');
+    if (openSection) {
+      openSavedSection(openSection.dataset.openSection);
+      return;
+    }
+
+    const phaseFocus = event.target.closest('[data-phase-focus]');
+    if (phaseFocus) {
+      state.phaseFocus[currentScreen().id] = phaseFocus.dataset.phaseFocus;
+      state.prompts = [];
+      renderAll();
+      saveAppState();
+      if (state.ideas && !state.plan[activeStageId()]) refreshPrompts();
+      return;
+    }
+
     const pitchPathButton = event.target.closest('[data-pitch-path]');
     if (pitchPathButton) {
       state.profile.pitchPath = pitchPathButton.dataset.pitchPath;
@@ -665,6 +1012,8 @@ function bindEvents() {
     const keyRoot = event.target.closest('[data-key-root]');
     if (keyRoot) {
       state.profile.keyRoot = keyRoot.dataset.keyRoot;
+      if (state.profile.keyRoot.includes('b')) state.profile.noteSpelling = 'flats';
+      if (state.profile.keyRoot.includes('#')) state.profile.noteSpelling = 'sharps';
       renderBody();
       renderSectionSummary();
       renderStepStrip();
@@ -680,11 +1029,12 @@ function bindEvents() {
     if (use) {
       const idea = state.prompts.find((item) => item.id === use.dataset.use);
       if (!idea) return;
+      const stageId = idea._stageId || activeStageId();
       const enrichedIdea = {
         ...idea,
-        friendly: ideaPresentation(idea),
+        friendly: ideaPresentation(idea, stageId),
       };
-      state.plan[currentScreen().id] = enrichedIdea;
+      state.plan[stageId] = enrichedIdea;
       state.traceIdea = enrichedIdea;
       state.prompts = [];
       renderAll();
@@ -697,7 +1047,7 @@ function bindEvents() {
       const sourceIdea = findVisibleIdea(source.dataset.source);
       state.traceIdea = sourceIdea ? {
         ...sourceIdea,
-        friendly: sourceIdea.friendly || ideaPresentation(sourceIdea),
+        friendly: sourceIdea.friendly || ideaPresentation(sourceIdea, sourceIdea._stageId || activeStageId()),
       } : null;
       renderTracePanel();
       saveAppState();
@@ -717,7 +1067,7 @@ function bindEvents() {
   els.nextBtn.addEventListener('click', next);
   els.loadIdeasBtn.addEventListener('click', () => currentScreen().type === 'build' ? refreshPrompts() : ensureIdeasLoaded());
   els.inspireBtn.addEventListener('click', () => refreshPrompts({ inspiration: true }));
-  els.saveBtn.addEventListener('click', () => { savePlanSnapshot(payload()); toast('Saved locally'); });
+  els.saveBtn.addEventListener('click', saveCurrentSection);
   els.exportJsonBtn.addEventListener('pointerdown', prepareJsonExport);
   els.exportJsonBtn.addEventListener('focus', prepareJsonExport);
   els.exportJsonBtn.addEventListener('click', prepareJsonExport);
@@ -747,6 +1097,7 @@ async function init() {
   renderStatus();
   renderAll();
   bindEvents();
+  setUtilityPanel(state.utilityPanel, false);
 }
 
 init().catch((error) => {

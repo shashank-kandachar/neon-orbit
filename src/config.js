@@ -17,7 +17,7 @@ export const STAGES = [
 ];
 
 export const APP_OPTIONS = {
-  keyRoots: ['C', 'C♯ / D♭', 'D', 'D♯ / E♭', 'E', 'F', 'F♯ / G♭', 'G', 'G♯ / A♭', 'A', 'A♯ / B♭', 'B'],
+  keyRoots: ['C', 'C#', 'Db', 'D', 'D#', 'Eb', 'E', 'F', 'F#', 'Gb', 'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B'],
   pitchWorlds: [
     'Ionian', 'Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian', 'Locrian',
     'Melodic minor', 'Harmonic minor', 'Dorian ♭2', 'Lydian dominant', 'Altered',
@@ -61,6 +61,7 @@ export const APP_OPTIONS = {
 
 export const DEFAULT_PROFILE = {
   pitchPath: 'scale',
+  noteSpelling: 'sharps',
   keyRoot: 'D',
   pitchWorld: 'Dorian',
   selectedRaga: '',

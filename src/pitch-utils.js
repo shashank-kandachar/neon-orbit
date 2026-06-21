@@ -1,18 +1,43 @@
-const NOTE_LABELS = ['C', 'C♯ / D♭', 'D', 'D♯ / E♭', 'E', 'F', 'F♯ / G♭', 'G', 'G♯ / A♭', 'A', 'A♯ / B♭', 'B'];
+const NOTE_LABELS_SHARP = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const NOTE_LABELS_FLAT = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
 
 const NOTE_TO_PC = new Map([
   ['C', 0],
+  ['B#', 0],
   ['C♯ / D♭', 1],
+  ['C#', 1],
+  ['C♯', 1],
+  ['Db', 1],
+  ['D♭', 1],
   ['D', 2],
   ['D♯ / E♭', 3],
+  ['D#', 3],
+  ['D♯', 3],
+  ['Eb', 3],
+  ['E♭', 3],
   ['E', 4],
+  ['Fb', 4],
   ['F', 5],
+  ['E#', 5],
   ['F♯ / G♭', 6],
+  ['F#', 6],
+  ['F♯', 6],
+  ['Gb', 6],
+  ['G♭', 6],
   ['G', 7],
   ['G♯ / A♭', 8],
+  ['G#', 8],
+  ['G♯', 8],
+  ['Ab', 8],
+  ['A♭', 8],
   ['A', 9],
   ['A♯ / B♭', 10],
+  ['A#', 10],
+  ['A♯', 10],
+  ['Bb', 10],
+  ['B♭', 10],
   ['B', 11],
+  ['Cb', 11],
 ]);
 
 const INTERVAL_TO_SEMITONE = {
@@ -202,13 +227,34 @@ const RAGA_REFERENCE_LIBRARY = {
   },
 };
 
-function notesFromIntervals(root, intervals = []) {
+function noteLabelsFor(spelling = 'sharps') {
+  return spelling === 'flats' ? NOTE_LABELS_FLAT : NOTE_LABELS_SHARP;
+}
+
+function inferSpelling(root = '', preferred = '') {
+  if (preferred === 'flats' || preferred === 'sharps') return preferred;
+  if (String(root).includes('b') || String(root).includes('♭')) return 'flats';
+  return 'sharps';
+}
+
+export function normaliseKeyRoot(root = 'D', spelling = 'sharps') {
+  const pc = NOTE_TO_PC.get(root);
+  if (pc === undefined) return root;
+  return noteLabelsFor(spelling)[pc];
+}
+
+export function getKeyRootOptions(spelling = 'sharps') {
+  return [...noteLabelsFor(spelling)];
+}
+
+function notesFromIntervals(root, intervals = [], spelling = 'sharps') {
   const rootPc = NOTE_TO_PC.get(root);
   if (rootPc === undefined) return [];
+  const labels = noteLabelsFor(spelling);
   return intervals
     .map((interval) => INTERVAL_TO_SEMITONE[interval])
     .filter((value) => value !== undefined)
-    .map((offset) => NOTE_LABELS[(rootPc + offset) % 12]);
+    .map((offset) => labels[(rootPc + offset) % 12]);
 }
 
 function pitchPath(profile = {}) {
@@ -235,7 +281,8 @@ function cleanRagaLine(value = '') {
 }
 
 export function getScaleInfo(profile = {}) {
-  const root = profile.keyRoot || 'D';
+  const spelling = inferSpelling(profile.keyRoot, profile.noteSpelling);
+  const root = normaliseKeyRoot(profile.keyRoot || 'D', spelling);
   const scale = profile.pitchWorld || 'Dorian';
   const formula = SCALE_LIBRARY[scale];
 
@@ -248,17 +295,18 @@ export function getScaleInfo(profile = {}) {
     root,
     scale,
     intervals: formula.intervals,
-    notes: notesFromIntervals(root, formula.intervals),
+    notes: notesFromIntervals(root, formula.intervals, spelling),
     feel: formula.feel,
   };
 }
 
 export function getRagaInfo(profile = {}, ragaCard = null) {
-  const root = profile.keyRoot || 'D';
+  const spelling = inferSpelling(profile.keyRoot, profile.noteSpelling);
+  const root = normaliseKeyRoot(profile.keyRoot || 'D', spelling);
   const name = profile.selectedRaga || '';
   const reference = RAGA_REFERENCE_LIBRARY[name] || null;
   const intervals = reference?.intervals || null;
-  const notes = intervals ? notesFromIntervals(root, intervals) : null;
+  const notes = intervals ? notesFromIntervals(root, intervals, spelling) : null;
   const sourceAscentDescent = cleanRagaLine(ragaCard?.ascentDescent);
   const sourceOutline = cleanRagaLine(ragaCard?.melodicOutline);
 
@@ -293,10 +341,10 @@ export function getRagaInfo(profile = {}, ragaCard = null) {
   };
 }
 
-export function getSargamReference(root = 'D') {
+export function getSargamReference(root = 'D', spelling = 'sharps') {
   const intervals = ['1', '2', '3', '4', '5', '6', '7'];
   const names = ['Sa', 'Re', 'Ga', 'Ma', 'Pa', 'Dha', 'Ni'];
-  const notes = notesFromIntervals(root, intervals);
+  const notes = notesFromIntervals(root, intervals, spelling);
   return names.map((name, index) => ({
     name,
     interval: intervals[index],
@@ -305,7 +353,8 @@ export function getSargamReference(root = 'D') {
 }
 
 export function getPitchContext(profile = {}, ragaCard = null) {
-  const root = profile.keyRoot || 'D';
+  const spelling = inferSpelling(profile.keyRoot, profile.noteSpelling);
+  const root = normaliseKeyRoot(profile.keyRoot || 'D', spelling);
   if (pitchPath(profile) === 'raga') {
     const ragaInfo = getRagaInfo(profile, ragaCard);
     return {
@@ -358,7 +407,7 @@ export function formatPitchSummary(profile = {}, ragaCard = null) {
     const ragaInfo = context.ragaInfo || getRagaInfo(profile, ragaCard);
     const pitchLine = ragaInfo.intervals && ragaInfo.notes
       ? `Common pitch reference: ${ragaInfo.intervals.join(' - ')}. Notes from ${ragaInfo.root} as Sa: ${ragaInfo.notes.join(', ')}.`
-      : `Sargam reference from ${ragaInfo.root}: ${getSargamReference(ragaInfo.root).map((item) => `${item.name}=${item.note}`).join(', ')}. The source card decides which forms are used.`;
+      : `Sargam reference from ${ragaInfo.root}: ${getSargamReference(ragaInfo.root, profile.noteSpelling).map((item) => `${item.name}=${item.note}`).join(', ')}. The source card decides which forms are used.`;
     return {
       heading: context.label,
       detail: pitchLine,

@@ -1,4 +1,4 @@
-import { getPitchContext } from './pitch-utils.js?v=keyfirst3.11';
+import { getPitchContext } from './pitch-utils.js?v=keyfirst3.15';
 
 const STAGE_TITLES = {
   section_identity: 'Shape the feeling',

@@ -518,3 +518,451 @@ select:focus, input:focus, textarea:focus { border-color: var(--line-strong); bo
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Step A compact workspace */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100vh;
+  height: 100svh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  padding:
+    max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+}
+
+.hero-card {
+  align-items: center;
+  padding: 10px 12px;
+  margin: 0;
+  border-radius: 18px;
+}
+
+.hero-card .kicker {
+  margin-bottom: 2px;
+}
+
+.hero-card h1 {
+  font-size: 1.12rem;
+  letter-spacing: 0;
+}
+
+.hero-card p {
+  font-size: 0.82rem;
+}
+
+.hero-actions {
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.hero-actions .btn {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.status-card {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 16px;
+  font-size: 0.82rem;
+}
+
+.wizard-card {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  padding: 14px;
+  border-radius: 20px;
+}
+
+.step-strip {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+}
+
+.step-button {
+  min-width: 120px;
+  border-radius: 13px;
+  padding: 8px 10px;
+}
+
+.screen-head {
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+
+.screen-head h2 {
+  font-size: 1.32rem;
+  letter-spacing: 0;
+}
+
+.screen-head p,
+.progress-pill {
+  font-size: 0.82rem;
+}
+
+.wizard-body {
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+.wizard-controls {
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, var(--cyan) 50%) calc(100% - 18px) 50% / 7px 7px no-repeat,
+    linear-gradient(135deg, var(--cyan) 50%, transparent 50%) calc(100% - 13px) 50% / 7px 7px no-repeat,
+    rgba(3,5,14,0.72);
+  padding-right: 34px;
+}
+
+.utility-panel {
+  position: fixed;
+  z-index: 10;
+  right: max(12px, env(safe-area-inset-right));
+  top: max(12px, env(safe-area-inset-top));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(440px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(17,22,42,0.98), rgba(8,11,24,0.98));
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.utility-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.utility-panel .drawer {
+  display: none;
+  min-height: 0;
+  overflow: auto;
+  box-shadow: none;
+}
+
+.utility-panel .drawer.is-active {
+  display: block;
+}
+
+.utility-panel .drawer summary {
+  display: none;
+}
+
+.song-entry {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(340px, 1.15fr);
+  gap: 14px;
+}
+
+.entry-card {
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 20px;
+  background: var(--panel-soft);
+  color: var(--text);
+  padding: 18px;
+  text-align: left;
+}
+
+button.entry-card {
+  cursor: pointer;
+  font: inherit;
+}
+
+.entry-card strong {
+  display: block;
+  font-size: clamp(1.45rem, 3vw, 2.2rem);
+  margin-bottom: 8px;
+}
+
+.entry-card em {
+  display: block;
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.primary-entry {
+  background: linear-gradient(135deg, rgba(77,226,255,0.16), rgba(202,255,130,0.08));
+}
+
+.section-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(48vh, 360px);
+  overflow: auto;
+  margin-top: 14px;
+  padding-right: 3px;
+}
+
+.section-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.045);
+  color: var(--text);
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.section-row span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.setup-workspace {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+  gap: 14px;
+}
+
+.setup-panel {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 18px;
+  background: var(--panel-soft);
+  padding: 14px;
+  overflow: auto;
+}
+
+.setup-section-head {
+  display: grid;
+  gap: 4px;
+}
+
+.setup-section-head h3 {
+  font-size: 1.14rem;
+}
+
+.pitch-path-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pitch-path-grid.compact .pitch-path-card {
+  min-height: 82px;
+  padding: 11px;
+}
+
+.pitch-path-card strong,
+.pitch-path-card em,
+.pitch-path-card span {
+  overflow-wrap: anywhere;
+}
+
+.segmented-control {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.segmented-control label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.045);
+  color: var(--muted);
+  padding: 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.segmented-control label:last-child {
+  border-right: 0;
+}
+
+.segmented-control label.is-selected {
+  background: rgba(77,226,255,0.14);
+  color: var(--text);
+}
+
+.segmented-control input {
+  width: auto;
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.note-grid.compact {
+  margin-top: 0;
+}
+
+.select-field {
+  display: grid;
+  gap: 7px;
+}
+
+.select-field span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.setup-grid .wide {
+  grid-column: 1 / -1;
+}
+
+.compact-guide {
+  gap: 8px;
+}
+
+.pitch-detail-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guidance-strip {
+  display: grid;
+  gap: 8px;
+}
+
+.guidance-strip div {
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(77,226,255,0.06);
+  padding: 10px;
+}
+
+.guidance-strip span {
+  display: block;
+  color: var(--cyan);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.guidance-strip p {
+  font-size: 0.88rem;
+}
+
+.build-workspace {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.phase-focus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.focus-chip {
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.045);
+  color: var(--muted);
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.focus-chip.is-selected {
+  border-color: var(--line-strong);
+  color: var(--text);
+  background: rgba(77,226,255,0.12);
+}
+
+.focus-chip.is-done {
+  border-color: rgba(202,255,130,0.28);
+}
+
+.prompt-scroll {
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+.chosen-idea {
+  align-self: start;
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 10px;
+  }
+  .hero-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .hero-actions {
+    justify-content: stretch;
+  }
+  .hero-actions .btn {
+    width: auto;
+    flex: 1 1 auto;
+  }
+  .song-entry,
+  .setup-workspace {
+    grid-template-columns: 1fr;
+  }
+  .setup-panel {
+    overflow: visible;
+  }
+  .wizard-body {
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .status-card {
+    display: none;
+  }
+  .setup-grid,
+  .pitch-detail-grid.compact,
+  .pitch-path-grid.compact {
+    grid-template-columns: 1fr;
+  }
+  .hero-actions .btn {
+    flex-basis: calc(50% - 6px);
+  }
+}

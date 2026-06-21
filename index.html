@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Neon Orbit — Key-first Section Wizard</title>
-  <link rel="stylesheet" href="./styles/app.css?v=keyfirst3.11" />
+  <title>Neon Orbit — Composition Guide</title>
+  <link rel="stylesheet" href="./styles/app.css?v=keyfirst3.15" />
 </head>
 <body>
   <div class="page-bg"></div>
@@ -13,14 +13,18 @@
     <header class="hero-card">
       <div>
         <div class="kicker">Neon Orbit</div>
-        <h1>Key-first Section Wizard</h1>
-        <p>A calm step-by-step guide for building one psychedelic live-electronic section.</p>
+        <h1>Composition Guide</h1>
+        <p>Local-first song and section workspace.</p>
       </div>
       <div class="hero-actions">
         <button class="btn secondary" id="loadIdeasBtn">Load idea pool</button>
         <button class="btn secondary" id="saveBtn">Save</button>
         <a class="btn secondary" id="exportMdBtn" href="#" role="button">Export MD</a>
         <a class="btn secondary" id="exportJsonBtn" href="#" role="button">Export JSON</a>
+        <button class="btn secondary" data-open-panel="section">Section</button>
+        <button class="btn secondary" data-open-panel="plan">Plan</button>
+        <button class="btn secondary" data-open-panel="trace">Trace</button>
+        <button class="btn secondary" data-open-panel="search">Ideas</button>
       </div>
     </header>
 
@@ -51,23 +55,28 @@
       </section>
     </main>
 
-    <section class="drawer-grid">
-      <details class="drawer" open>
+    <section class="drawer-grid utility-panel hidden" id="utilityPanel" aria-hidden="true">
+      <div class="utility-panel-head">
+        <strong id="utilityPanelTitle">Section</strong>
+        <button class="btn small" id="panelCloseBtn">Close</button>
+      </div>
+
+      <details class="drawer" data-panel-view="section" open>
         <summary>Current section</summary>
         <div id="sectionSummary" class="mini-grid"></div>
       </details>
 
-      <details class="drawer">
+      <details class="drawer" data-panel-view="plan" open>
         <summary>Chosen prompts</summary>
         <div id="planSummary" class="stack"></div>
       </details>
 
-      <details class="drawer">
+      <details class="drawer" data-panel-view="trace" open>
         <summary>Source trace</summary>
         <div id="tracePanel" class="stack muted-box">Choose “Source” on a prompt.</div>
       </details>
 
-      <details class="drawer">
+      <details class="drawer" data-panel-view="search" open>
         <summary>Search ideas</summary>
         <div class="search-row">
           <input id="searchInput" type="search" placeholder="Search prompt text, gear, domains, books…" />
@@ -80,6 +89,6 @@
 
   <div class="toast hidden" id="toast"></div>
 
-  <script type="module" src="./src/main.js?v=keyfirst3.11"></script>
+  <script type="module" src="./src/main.js?v=keyfirst3.15"></script>
 </body>
 </html>
