@@ -1,84 +1,70 @@
 import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js';
 import { loadBootstrapData, loadIdeas } from './data-loader.js';
 import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js';
-import { loadState, saveState, clearState, loadSavedPlans, savePlanSnapshot, removeSavedPlan } from './storage.js';
+import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js';
 import { exportPlanJson, exportPlanMarkdown } from './export-utils.js';
+
+const SETUP_STEPS = [
+  { id: 'start', type: 'start', label: 'Start', blurb: 'Begin with a clear musical intention before choosing details.' },
+  { id: 'pitch', type: 'setup', label: 'Pitch world', blurb: 'Choose the scale, mode, raga or drone logic.' },
+  { id: 'motion', type: 'setup', label: 'Tempo + groove', blurb: 'Set the speed, pulse and rhythmic feel.' },
+  { id: 'identity', type: 'setup', label: 'Mood + role', blurb: 'Define what this section is supposed to do.' },
+  { id: 'source', type: 'setup', label: 'Instrument + gear', blurb: 'Choose the main sound source and optional hardware focus.' },
+];
+
+const SCREENS = [
+  ...SETUP_STEPS,
+  ...STAGES.map((stage) => ({ ...stage, type: 'build' })),
+];
 
 const state = {
   bootstrap: null,
   ideas: null,
   profile: { ...DEFAULT_PROFILE },
   plan: {},
-  currentStage: STAGES[0].id,
+  currentIndex: 0,
   currentPrompts: [],
-  activeView: 'builder',
   traceIdea: null,
-  savedPlans: loadSavedPlans(),
 };
 
+const $ = (id) => document.getElementById(id);
 const els = {
-  topbarStats: document.getElementById('topbarStats'),
-  setupForm: document.getElementById('setupForm'),
-  pitchWorldSelect: document.getElementById('pitchWorldSelect'),
-  ragaSelect: document.getElementById('ragaSelect'),
-  tempoInput: document.getElementById('tempoInput'),
-  moodSelect: document.getElementById('moodSelect'),
-  sectionTypeSelect: document.getElementById('sectionTypeSelect'),
-  energySelect: document.getElementById('energySelect'),
-  grooveSelect: document.getElementById('grooveSelect'),
-  instrumentSelect: document.getElementById('instrumentSelect'),
-  notesInput: document.getElementById('notesInput'),
-  gearChecklist: document.getElementById('gearChecklist'),
-  gearGuidance: document.getElementById('gearGuidance'),
-  domainChecklist: document.getElementById('domainChecklist'),
-  stageNav: document.getElementById('stageNav'),
-  stageTitle: document.getElementById('stageTitle'),
-  stageBlurb: document.getElementById('stageBlurb'),
-  loadIdeasBtn: document.getElementById('loadIdeasBtn'),
-  refreshStageBtn: document.getElementById('refreshStageBtn'),
-  inspirationBtn: document.getElementById('inspirationBtn'),
-  promptCards: document.getElementById('promptCards'),
-  sectionPlan: document.getElementById('sectionPlan'),
-  sectionSummary: document.getElementById('sectionSummary'),
-  completedCountPill: document.getElementById('completedCountPill'),
-  tracePanel: document.getElementById('tracePanel'),
-  saveSnapshotBtn: document.getElementById('saveSnapshotBtn'),
-  exportMdBtn: document.getElementById('exportMdBtn'),
-  exportJsonBtn: document.getElementById('exportJsonBtn'),
-  resetBuilderBtn: document.getElementById('resetBuilderBtn'),
-  searchInput: document.getElementById('searchInput'),
-  browseStageFilter: document.getElementById('browseStageFilter'),
-  browseDomainFilter: document.getElementById('browseDomainFilter'),
-  browseGearFilter: document.getElementById('browseGearFilter'),
-  searchBtn: document.getElementById('searchBtn'),
-  browseResults: document.getElementById('browseResults'),
-  savedPlans: document.getElementById('savedPlans'),
-  loadingOverlay: document.getElementById('loadingOverlay'),
-  loadingTitle: document.getElementById('loadingTitle'),
-  loadingText: document.getElementById('loadingText'),
-  clearGearBtn: document.getElementById('clearGearBtn'),
-  clearDomainBtn: document.getElementById('clearDomainBtn'),
-  builderView: document.getElementById('builderView'),
-  browseView: document.getElementById('browseView'),
-  savedView: document.getElementById('savedView'),
+  dataStrip: $('dataStrip'),
+  stepper: $('stepper'),
+  progressText: $('progressText'),
+  screenEyebrow: $('screenEyebrow'),
+  screenTitle: $('screenTitle'),
+  screenBlurb: $('screenBlurb'),
+  stageCount: $('stageCount'),
+  wizardBody: $('wizardBody'),
+  backBtn: $('backBtn'),
+  nextBtn: $('nextBtn'),
+  inspireBtn: $('inspireBtn'),
+  loadIdeasBtn: $('loadIdeasBtn'),
+  saveBtn: $('saveBtn'),
+  exportMdBtn: $('exportMdBtn'),
+  exportJsonBtn: $('exportJsonBtn'),
+  profileSummary: $('profileSummary'),
+  planSummary: $('planSummary'),
+  tracePanel: $('tracePanel'),
+  searchInput: $('searchInput'),
+  searchBtn: $('searchBtn'),
+  searchResults: $('searchResults'),
+  toast: $('toast'),
 };
 
-function showLoading(title, text) {
-  els.loadingTitle.textContent = title;
-  els.loadingText.textContent = text;
-  els.loadingOverlay.classList.remove('hidden');
-}
-
-function hideLoading() {
-  els.loadingOverlay.classList.add('hidden');
+function toast(message) {
+  els.toast.textContent = message;
+  els.toast.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => els.toast.classList.add('hidden'), 2400);
 }
 
 function saveAppState() {
   saveState({
     profile: state.profile,
     plan: state.plan,
-    currentStage: state.currentStage,
-    activeView: state.activeView,
+    currentIndex: state.currentIndex,
     traceIdea: state.traceIdea,
   });
 }
@@ -88,541 +74,485 @@ function hydrateState() {
   if (!stored) return;
   state.profile = { ...DEFAULT_PROFILE, ...(stored.profile || {}) };
   state.plan = stored.plan || {};
-  state.currentStage = stored.currentStage || state.currentStage;
-  state.activeView = stored.activeView || state.activeView;
+  state.currentIndex = stored.currentIndex || 0;
   state.traceIdea = stored.traceIdea || null;
 }
 
-function renderTopbarStats() {
-  const { manifest } = state.bootstrap;
-  const cards = [
-    { label: 'Ideas', value: manifest.ideaCount.toLocaleString() },
-    { label: 'Books', value: manifest.bookCount.toString() },
-    { label: 'Ragas', value: manifest.ragaCount.toString() },
-    { label: 'Audit', value: manifest.auditStatus.replaceAll('_', ' ') },
-  ];
-  els.topbarStats.innerHTML = cards.map((card) => `
-    <div class="stat-card">
-      <strong>${card.value}</strong>
-      <span>${card.label}</span>
-    </div>
-  `).join('');
+function escapeHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
 }
 
-function populateSelect(select, values, placeholder = '') {
-  const options = placeholder ? [`<option value="">${placeholder}</option>`] : [];
+function optionList(values, selected = '', empty = '') {
+  const items = empty ? [`<option value="">${empty}</option>`] : [];
   values.forEach((value) => {
-    options.push(`<option value="${value}">${value}</option>`);
+    items.push(`<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(value)}</option>`);
   });
-  select.innerHTML = options.join('');
+  return items.join('');
 }
 
-function renderFormOptions() {
-  populateSelect(els.pitchWorldSelect, APP_OPTIONS.pitchWorlds);
-  populateSelect(els.moodSelect, APP_OPTIONS.moods);
-  populateSelect(els.sectionTypeSelect, APP_OPTIONS.sectionTypes);
-  populateSelect(els.energySelect, APP_OPTIONS.energyLevels);
-  populateSelect(els.grooveSelect, APP_OPTIONS.grooveFeels);
-  populateSelect(els.instrumentSelect, APP_OPTIONS.instruments);
-
-  const ragaOptions = state.bootstrap.ragaData.cards.map((card) => `<option value="${card.name}">${card.name}</option>`);
-  els.ragaSelect.insertAdjacentHTML('beforeend', ragaOptions.join(''));
-
-  populateSelect(els.browseStageFilter, STAGES.map((stage) => stage.id), 'All stages');
-  populateSelect(els.browseDomainFilter, APP_OPTIONS.domainFilters, 'All domains');
-  populateSelect(els.browseGearFilter, APP_OPTIONS.gear.map((g) => g.id), 'All gear');
+function currentScreen() {
+  return SCREENS[state.currentIndex] || SCREENS[0];
 }
 
-function renderFormValues() {
-  els.pitchWorldSelect.value = state.profile.pitchWorld || DEFAULT_PROFILE.pitchWorld;
-  els.ragaSelect.value = state.profile.selectedRaga || '';
-  els.tempoInput.value = state.profile.tempo;
-  els.moodSelect.value = state.profile.mood;
-  els.sectionTypeSelect.value = state.profile.sectionType;
-  els.energySelect.value = state.profile.energy;
-  els.grooveSelect.value = state.profile.groove;
-  els.instrumentSelect.value = state.profile.instrument;
-  els.notesInput.value = state.profile.notes || '';
-}
-
-function renderChecklists() {
-  els.gearChecklist.innerHTML = APP_OPTIONS.gear.map((item) => `
-    <label class="checkbox-item">
-      <input type="checkbox" value="${item.id}" ${state.profile.gearFocus.includes(item.id) ? 'checked' : ''} />
-      <span class="checkbox-copy">
-        <strong>${item.label}</strong>
-        <span>Focused guidance</span>
-      </span>
-    </label>
-  `).join('');
-
-  els.domainChecklist.innerHTML = APP_OPTIONS.domainFilters.map((domain) => `
-    <label class="checkbox-item">
-      <input type="checkbox" value="${domain}" ${state.profile.domainFilters.includes(domain) ? 'checked' : ''} />
-      <span class="checkbox-copy">
-        <strong>${domain}</strong>
-        <span>Filter prompt engine</span>
-      </span>
-    </label>
-  `).join('');
-}
-
-function renderGearGuidance() {
-  const selected = state.profile.gearFocus;
-  if (!selected.length) {
-    els.gearGuidance.innerHTML = `<div class="info-card"><strong>No gear focus selected</strong><p class="muted">Choose one or more gear lanes to make the guidance more practical.</p></div>`;
-    return;
-  }
-
-  const panels = [];
-  const seedPanels = state.bootstrap.seedPanels;
-
-  if (selected.includes('microfreak')) {
-    panels.push({
-      title: 'MicroFreak lanes',
-      items: seedPanels.microfreak_app_prompt_domains?.domains || [],
-    });
-  }
-  if (selected.includes('sl2')) {
-    panels.push({
-      title: 'Boss SL-2 lanes',
-      items: seedPanels.sl2_app_prompt_domains?.domains || [],
-    });
-  }
-  if (selected.includes('ampero')) {
-    const ampero = seedPanels.ampero_signal_chain_engine_seed || {};
-    panels.push({
-      title: 'Ampero chain thinking',
-      items: [...(ampero.chain_types || []), ...(ampero.guardrails || [])],
-    });
-  }
-  if (selected.includes('ableton')) {
-    panels.push({
-      title: 'Ableton flow cues',
-      items: state.bootstrap.seedPanels.neon_orbit_scale_selector_ui_seed?.screens || ['tone_count_browser', 'harmony_match', 'sound_design_pairing'],
-    });
-  }
-  if (selected.includes('guitar')) {
-    panels.push({
-      title: 'Guitar lens',
-      items: ['motif clarity', 'voicing restraint', 'touch and articulation', 'live-feasible repetition'],
-    });
-  }
-  if (selected.includes('field_recordings')) {
-    panels.push({
-      title: 'Field layer lens',
-      items: ['capture a specific environment', 'shape texture, not clutter', 'let a real-world sound become a rhythm or drone', 'preserve emotional place-memory'],
-    });
-  }
-
-  els.gearGuidance.innerHTML = panels.map((panel) => `
-    <div class="info-card">
-      <strong>${panel.title}</strong>
-      <ul>${panel.items.slice(0, 6).map((item) => `<li>${item}</li>`).join('')}</ul>
-    </div>
-  `).join('');
-}
-
-function renderStageNav() {
-  const counts = new Map((state.bootstrap.manifest.stageBuckets || []).map((item) => [item.id, item.count]));
-  els.stageNav.innerHTML = STAGES.map((stage, index) => `
-    <button class="stage-pill ${stage.id === state.currentStage ? 'active' : ''}" data-stage="${stage.id}">
-      <strong>${index + 1}. ${stage.label.replace(/^\d+\.\s*/, '')}</strong>
-      <span>${(counts.get(stage.id) || 0).toLocaleString()} ideas</span>
-    </button>
-  `).join('');
-}
-
-function renderStageHeader() {
-  const stage = STAGES.find((item) => item.id === state.currentStage);
-  els.stageTitle.textContent = stage?.label.replace(/^\d+\.\s*/, '') || 'Section builder';
-  els.stageBlurb.textContent = stage?.blurb || '';
-}
-
-function renderPrompts() {
-  if (!state.currentPrompts.length) {
-    els.promptCards.innerHTML = `<div class="info-card"><strong>No prompts loaded yet</strong><p class="muted">Load the idea pool, then refresh prompts for the current stage.</p></div>`;
-    return;
-  }
-
-  els.promptCards.innerHTML = state.currentPrompts.map((idea, index) => {
-    const scoreClass = idea._score >= 70 ? 'score-high' : idea._score >= 48 ? 'score-mid' : 'score-low';
-    return `
-      <article class="prompt-card ${scoreClass}">
-        <div class="prompt-meta">
-          <span class="meta-chip">Book ${idea.bookNumber}</span>
-          <span class="meta-chip">${idea.stageBucket.replaceAll('_', ' ')}</span>
-          <span class="meta-chip">${idea.energy || 'energy open'}</span>
-          <span class="meta-chip">Match ${idea._score ?? '—'}</span>
-        </div>
-        <p class="prompt-copy">${idea.prompt}</p>
-        <div class="prompt-meta">
-          ${(idea.instrumentFocus || []).slice(0, 3).map((item) => `<span class="meta-chip">${item}</span>`).join('')}
-        </div>
-        <div class="prompt-actions">
-          <button class="button primary" data-action="add" data-id="${idea.id}">${index === 0 ? 'Use for this stage' : 'Add to stage'}</button>
-          <button class="button secondary" data-action="trace" data-id="${idea.id}">Why this?</button>
-        </div>
-      </article>
-    `;
-  }).join('');
-}
-
-function renderSectionSummary() {
-  const summary = buildSectionSummary(state.profile, state.plan);
-  const ragaInfo = state.profile.selectedRaga ? `<div class="meta-chip">Raga focus: ${state.profile.selectedRaga}</div>` : '';
-  els.sectionSummary.innerHTML = `
-    <div class="brand-kicker">Current section</div>
-    <h3>${summary.title}</h3>
-    <p class="muted">${summary.subtitle}</p>
-    <div class="prompt-meta" style="margin-top:10px">
-      <span class="meta-chip">${summary.completedStages} / 15 stages filled</span>
-      ${ragaInfo}
-    </div>
-  `;
-  els.completedCountPill.textContent = `${summary.completedStages} / 15`;
-}
-
-function renderPlan() {
-  els.sectionPlan.innerHTML = STAGES.map((stage) => {
-    const item = state.plan[stage.id];
-    if (!item) {
-      return `
-        <div class="plan-item">
-          <h4>${stage.label}</h4>
-          <p class="muted">No prompt chosen yet.</p>
-        </div>
-      `;
-    }
-    return `
-      <div class="plan-item selected">
-        <h4>${stage.label}</h4>
-        <p>${item.prompt}</p>
-        <small>Book ${item.bookNumber} — ${item.sourceBook}</small>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderTracePanel() {
-  const item = state.traceIdea;
-  if (!item) {
-    els.tracePanel.classList.add('empty');
-    els.tracePanel.innerHTML = `<p class="muted">Choose “Why this?” on a prompt to inspect its source, domains and applicability.</p>`;
-    return;
-  }
-  els.tracePanel.classList.remove('empty');
-  els.tracePanel.innerHTML = `
-    <div class="trace-card">
-      <div class="brand-kicker">Source trace</div>
-      <h3>Book ${item.bookNumber} — ${item.sourceBook}</h3>
-      <p class="muted">${item.sourceAuthor || 'Unknown source author'}</p>
-      <div class="trace-meta" style="margin-top:10px">
-        <span class="meta-chip">${item.category || 'category open'}</span>
-        <span class="meta-chip">${item.useCase || 'use case open'}</span>
-        <span class="meta-chip">${item.wizardStageDisplay || item.stageBucket}</span>
-      </div>
-      <p class="prompt-copy" style="margin-top:12px">${item.prompt}</p>
-      <p class="muted" style="margin-top:12px">${item.neonOrbitUse || 'No extra Neon Orbit application note available.'}</p>
-      <div class="trace-meta" style="margin-top:12px">
-        ${(item.domainHints || []).map((domain) => `<span class="meta-chip">${domain}</span>`).join('')}
-      </div>
-      <div class="trace-meta" style="margin-top:8px">
-        ${(item.tags || []).slice(0, 6).map((tag) => `<span class="meta-chip">${tag}</span>`).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderSavedPlans() {
-  if (!state.savedPlans.length) {
-    els.savedPlans.innerHTML = `<div class="info-card"><strong>No saved snapshots yet</strong><p class="muted">Save a section plan and it will appear here.</p></div>`;
-    return;
-  }
-  els.savedPlans.innerHTML = state.savedPlans.map((item) => `
-    <article class="saved-card">
-      <h4>${item.summary.title}</h4>
-      <p class="muted">${item.summary.subtitle}</p>
-      <small>${new Date(item.createdAt).toLocaleString('en-GB')}</small>
-      <div class="prompt-actions" style="margin-top:12px">
-        <button class="button secondary" data-plan-action="load" data-plan-id="${item.id}">Load</button>
-        <button class="button ghost" data-plan-action="remove" data-plan-id="${item.id}">Remove</button>
-      </div>
-    </article>
-  `).join('');
-}
-
-function renderBrowseResults(results = []) {
-  if (!results.length) {
-    els.browseResults.innerHTML = `<div class="info-card"><strong>No results yet</strong><p class="muted">Try a search or filter to browse the idea pool.</p></div>`;
-    return;
-  }
-  els.browseResults.innerHTML = results.map((idea) => `
-    <article class="browse-card">
-      <h4>${idea.prompt}</h4>
-      <div class="prompt-meta">
-        <span class="meta-chip">Book ${idea.bookNumber}</span>
-        <span class="meta-chip">${idea.stageBucket.replaceAll('_', ' ')}</span>
-        <span class="meta-chip">${idea.sourceBook}</span>
-      </div>
-      <small>${idea.neonOrbitUse || 'No extra application note.'}</small>
-      <div class="prompt-actions" style="margin-top:12px">
-        <button class="button primary" data-browse-action="stage" data-id="${idea.id}">Use for current stage</button>
-        <button class="button secondary" data-browse-action="trace" data-id="${idea.id}">Why this?</button>
-      </div>
-    </article>
-  `).join('');
-}
-
-function switchView(view) {
-  state.activeView = view;
-  document.querySelectorAll('.tab-button').forEach((button) => {
-    button.classList.toggle('active', button.dataset.view === view);
-  });
-  els.builderView.classList.toggle('hidden', view !== 'builder');
-  els.browseView.classList.toggle('hidden', view !== 'browse');
-  els.savedView.classList.toggle('hidden', view !== 'saved');
-  saveAppState();
-}
-
-function syncProfileFromForm() {
-  state.profile = {
-    ...state.profile,
-    pitchWorld: els.pitchWorldSelect.value,
-    selectedRaga: els.ragaSelect.value,
-    tempo: Number(els.tempoInput.value || DEFAULT_PROFILE.tempo),
-    mood: els.moodSelect.value,
-    sectionType: els.sectionTypeSelect.value,
-    energy: els.energySelect.value,
-    groove: els.grooveSelect.value,
-    instrument: els.instrumentSelect.value,
-    notes: els.notesInput.value,
-    gearFocus: [...els.gearChecklist.querySelectorAll('input:checked')].map((input) => input.value),
-    domainFilters: [...els.domainChecklist.querySelectorAll('input:checked')].map((input) => input.value),
-  };
-  renderGearGuidance();
-  renderSectionSummary();
-  saveAppState();
-}
-
-async function ensureIdeasLoaded() {
-  if (state.ideas) return;
-  showLoading('Loading idea pool', 'Reading the compact authority bundle. This may take a moment the first time.');
-  try {
-    state.ideas = await loadIdeas();
-    els.loadIdeasBtn.textContent = 'Ideas loaded';
-  } catch (error) {
-    alert(`Could not load the idea pool. Run the app from a local web server.\n\n${error.message}`);
-  } finally {
-    hideLoading();
-  }
-}
-
-async function refreshCurrentStage({ inspiration = false } = {}) {
-  await ensureIdeasLoaded();
-  if (!state.ideas) return;
-  syncProfileFromForm();
-  state.currentPrompts = generateStagePrompts(state.ideas, state.profile, state.currentStage, state.plan, { inspiration });
-  renderPrompts();
-  saveAppState();
-}
-
-function getIdeaById(id) {
-  if (!state.ideas) return null;
-  return state.ideas.find((idea) => idea.id === id) || null;
-}
-
-function addPromptToCurrentStage(id) {
-  const idea = getIdeaById(id) || state.currentPrompts.find((item) => item.id === id);
-  if (!idea) return;
-  state.plan[state.currentStage] = idea;
-  renderPlan();
-  renderSectionSummary();
-  state.traceIdea = idea;
-  renderTracePanel();
-  saveAppState();
-
-  const index = STAGES.findIndex((stage) => stage.id === state.currentStage);
-  if (index < STAGES.length - 1) {
-    state.currentStage = STAGES[index + 1].id;
-    renderStageNav();
-    renderStageHeader();
-    refreshCurrentStage();
-  }
-}
-
-function buildSnapshotPayload() {
-  const summary = buildSectionSummary(state.profile, state.plan);
+function buildPayload() {
   return {
     id: `section_${Date.now()}`,
     createdAt: new Date().toISOString(),
     profile: state.profile,
-    summary,
+    summary: buildSectionSummary(state.profile, state.plan),
     plan: state.plan,
   };
 }
 
-function handleSaveSnapshot() {
-  const payload = buildSnapshotPayload();
-  savePlanSnapshot(payload);
-  state.savedPlans = loadSavedPlans();
-  renderSavedPlans();
-  switchView('saved');
+function completedBuildStages() {
+  return Object.keys(state.plan).length;
 }
 
-function handleReset() {
-  if (!confirm('Reset the builder and clear the current local state?')) return;
-  state.profile = { ...DEFAULT_PROFILE };
-  state.plan = {};
-  state.currentPrompts = [];
-  state.currentStage = STAGES[0].id;
-  state.traceIdea = null;
-  clearState();
-  renderFormValues();
-  renderChecklists();
-  renderStageNav();
-  renderStageHeader();
-  renderGearGuidance();
-  renderSectionSummary();
-  renderPlan();
-  renderTracePanel();
-  renderPrompts();
+function isScreenDone(screen) {
+  if (screen.type === 'start') return true;
+  if (screen.id === 'pitch') return Boolean(state.profile.pitchWorld);
+  if (screen.id === 'motion') return Boolean(state.profile.tempo && state.profile.groove);
+  if (screen.id === 'identity') return Boolean(state.profile.mood && state.profile.sectionType && state.profile.energy);
+  if (screen.id === 'source') return Boolean(state.profile.instrument);
+  if (screen.type === 'build') return Boolean(state.plan[screen.id]);
+  return false;
 }
 
-async function handleSearch() {
-  await ensureIdeasLoaded();
-  if (!state.ideas) return;
-  const results = searchIdeas(state.ideas, els.searchInput.value, {
-    stage: els.browseStageFilter.value,
-    domain: els.browseDomainFilter.value,
-    gear: els.browseGearFilter.value,
-  });
-  renderBrowseResults(results);
+function renderDataStrip() {
+  const m = state.bootstrap.manifest;
+  els.dataStrip.innerHTML = `
+    <span><strong>${m.ideaCount.toLocaleString()}</strong> ideas</span>
+    <span><strong>${m.bookCount}</strong> books</span>
+    <span><strong>${m.ragaCount}</strong> ragas</span>
+    <span><strong>${escapeHtml(m.auditStatus).replaceAll('_',' ')}</strong></span>
+  `;
 }
 
-function bindEvents() {
-  els.setupForm.addEventListener('change', syncProfileFromForm);
-  els.notesInput.addEventListener('input', syncProfileFromForm);
-  els.gearChecklist.addEventListener('change', syncProfileFromForm);
-  els.domainChecklist.addEventListener('change', syncProfileFromForm);
-
-  els.clearGearBtn.addEventListener('click', () => {
-    els.gearChecklist.querySelectorAll('input').forEach((input) => { input.checked = false; });
-    syncProfileFromForm();
-  });
-
-  els.clearDomainBtn.addEventListener('click', () => {
-    els.domainChecklist.querySelectorAll('input').forEach((input) => { input.checked = false; });
-    syncProfileFromForm();
-  });
-
-  els.stageNav.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-stage]');
-    if (!button) return;
-    state.currentStage = button.dataset.stage;
-    renderStageNav();
-    renderStageHeader();
-    if (state.ideas) refreshCurrentStage();
-    saveAppState();
-  });
-
-  els.promptCards.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-action]');
-    if (!button) return;
-    const id = button.dataset.id;
-    if (button.dataset.action === 'add') addPromptToCurrentStage(id);
-    if (button.dataset.action === 'trace') {
-      state.traceIdea = getIdeaById(id) || state.currentPrompts.find((item) => item.id === id);
-      renderTracePanel();
-      saveAppState();
-    }
-  });
-
-  els.savedPlans.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-plan-action]');
-    if (!button) return;
-    const id = button.dataset.planId;
-    if (button.dataset.planAction === 'remove') {
-      state.savedPlans = removeSavedPlan(id);
-      renderSavedPlans();
-      return;
-    }
-    if (button.dataset.planAction === 'load') {
-      const plan = state.savedPlans.find((item) => item.id === id);
-      if (!plan) return;
-      state.profile = plan.profile;
-      state.plan = plan.plan;
-      state.currentStage = STAGES[0].id;
-      renderFormValues();
-      renderChecklists();
-      renderStageNav();
-      renderStageHeader();
-      renderGearGuidance();
-      renderSectionSummary();
-      renderPlan();
-      renderTracePanel();
-      switchView('builder');
-      saveAppState();
-    }
-  });
-
-  els.browseResults.addEventListener('click', (event) => {
-    const button = event.target.closest('[data-browse-action]');
-    if (!button) return;
-    const id = button.dataset.id;
-    if (button.dataset.browseAction === 'stage') {
-      addPromptToCurrentStage(id);
-      switchView('builder');
-    }
-    if (button.dataset.browseAction === 'trace') {
-      state.traceIdea = getIdeaById(id);
-      renderTracePanel();
-      saveAppState();
-    }
-  });
-
-  document.querySelectorAll('.tab-button').forEach((button) => {
-    button.addEventListener('click', () => switchView(button.dataset.view));
-  });
-
-  els.loadIdeasBtn.addEventListener('click', () => refreshCurrentStage());
-  els.refreshStageBtn.addEventListener('click', () => refreshCurrentStage());
-  els.inspirationBtn.addEventListener('click', () => refreshCurrentStage({ inspiration: true }));
-  els.searchBtn.addEventListener('click', handleSearch);
-  els.searchInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') handleSearch();
-  });
-  els.saveSnapshotBtn.addEventListener('click', handleSaveSnapshot);
-  els.exportJsonBtn.addEventListener('click', () => exportPlanJson(buildSnapshotPayload()));
-  els.exportMdBtn.addEventListener('click', () => exportPlanMarkdown(buildSnapshotPayload(), STAGES));
-  els.resetBuilderBtn.addEventListener('click', handleReset);
+function renderStepper() {
+  els.progressText.textContent = `Step ${state.currentIndex + 1} / ${SCREENS.length}`;
+  els.stepper.innerHTML = SCREENS.map((screen, index) => `
+    <button class="step-btn ${index === state.currentIndex ? 'active' : ''} ${isScreenDone(screen) ? 'done' : ''}" data-index="${index}">
+      <span class="step-num">${index + 1}</span>
+      <span class="step-copy">
+        <strong>${escapeHtml(screen.label.replace(/^\d+\.\s*/, ''))}</strong>
+        <span>${screen.type === 'build' ? 'compose step' : 'setup'}</span>
+      </span>
+    </button>
+  `).join('');
 }
 
-async function init() {
-  showLoading('Loading authority data', 'Preparing the audited Neon Orbit bootstrap data.');
+function renderHeader() {
+  const screen = currentScreen();
+  els.screenEyebrow.textContent = screen.type === 'build' ? 'Build the section' : 'Setup';
+  els.screenTitle.textContent = screen.label.replace(/^\d+\.\s*/, '');
+  els.screenBlurb.textContent = screen.blurb || '';
+  els.stageCount.textContent = `${completedBuildStages()} / ${STAGES.length} prompts`;
+  els.backBtn.disabled = state.currentIndex === 0;
+  els.nextBtn.textContent = state.currentIndex === SCREENS.length - 1 ? 'Finish' : 'Next';
+  els.inspireBtn.style.display = screen.type === 'build' ? 'inline-flex' : 'none';
+}
+
+function renderProfileSummary() {
+  const p = state.profile;
+  const rows = [
+    ['Pitch', p.selectedRaga ? `${p.pitchWorld} · ${p.selectedRaga}` : p.pitchWorld],
+    ['Tempo', `${p.tempo} BPM`],
+    ['Mood', p.mood],
+    ['Section', p.sectionType],
+    ['Energy', p.energy],
+    ['Groove', p.groove],
+    ['Source', p.instrument],
+    ['Gear', (p.gearFocus || []).join(', ') || 'None'],
+  ];
+  els.profileSummary.innerHTML = rows.map(([label, value]) => `
+    <div class="summary-item"><span>${label}</span><strong>${escapeHtml(value || '—')}</strong></div>
+  `).join('');
+}
+
+function renderPlanSummary() {
+  if (!Object.keys(state.plan).length) {
+    els.planSummary.innerHTML = `<div class="plan-item empty">No build prompts chosen yet.</div>`;
+    return;
+  }
+  els.planSummary.innerHTML = STAGES.map((stage) => {
+    const item = state.plan[stage.id];
+    if (!item) return '';
+    return `<div class="plan-item"><span>${escapeHtml(stage.label)}</span><p>${escapeHtml(item.prompt)}</p></div>`;
+  }).join('');
+}
+
+function renderTrace() {
+  const item = state.traceIdea;
+  if (!item) {
+    els.tracePanel.innerHTML = `<p class="subtle">Choose “Source” on a prompt to see where it came from.</p>`;
+    return;
+  }
+  els.tracePanel.innerHTML = `
+    <div class="trace-card">
+      <div class="eyebrow">Book ${item.bookNumber}</div>
+      <h3>${escapeHtml(item.sourceBook || 'Unknown source')}</h3>
+      <p class="subtle">${escapeHtml(item.sourceAuthor || '')}</p>
+      <p style="margin-top:10px">${escapeHtml(item.prompt)}</p>
+      <div class="chip-row" style="margin-top:10px">
+        ${(item.domainHints || []).slice(0,5).map((d) => `<span class="chip">${escapeHtml(d)}</span>`).join('')}
+        ${(item.gearHints || []).map((d) => `<span class="chip">${escapeHtml(d)}</span>`).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderStart() {
+  els.wizardBody.innerHTML = `
+    <div class="start-panel">
+      <div class="big-start">
+        <h3>Less dashboard. More musical path.</h3>
+        <p class="subtle">This version hides the big control surface. First you define the section, then the app gives you a few relevant prompts at each creative step.</p>
+      </div>
+      <div class="mode-list">
+        <div class="mode-card"><strong>1. Choose</strong><p class="subtle">Pitch world, tempo, mood, section role and sound source.</p></div>
+        <div class="mode-card"><strong>2. Build</strong><p class="subtle">Move through the section one layer at a time.</p></div>
+        <div class="mode-card"><strong>3. Capture</strong><p class="subtle">Save or export the section plan with source traces intact.</p></div>
+      </div>
+      <div class="help-card">
+        <strong>Stage 1 note</strong>
+        <p class="subtle">The idea pool only loads when needed, so the interface stays calm until you reach the prompt-building part.</p>
+      </div>
+    </div>
+  `;
+}
+
+function setProfileFromInput(name, value, checked = null) {
+  if (name === 'gearFocus' || name === 'domainFilters') {
+    const current = new Set(state.profile[name] || []);
+    checked ? current.add(value) : current.delete(value);
+    state.profile[name] = [...current];
+  } else if (name === 'tempo') {
+    state.profile[name] = Number(value || 0);
+  } else {
+    state.profile[name] = value;
+  }
+  renderProfileSummary();
+  saveAppState();
+}
+
+function renderPitch() {
+  const ragas = state.bootstrap.ragaData.cards.map((card) => card.name);
+  const selectedRaga = state.bootstrap.ragaData.cards.find((card) => card.name === state.profile.selectedRaga);
+  els.wizardBody.innerHTML = `
+    <div class="choice-grid">
+      <div class="choice-card">
+        <label>Scale / raga / mode / pitch world
+          <select data-profile="pitchWorld">${optionList(APP_OPTIONS.pitchWorlds, state.profile.pitchWorld)}</select>
+        </label>
+      </div>
+      <div class="choice-card">
+        <label>Specific raga, optional
+          <select data-profile="selectedRaga">${optionList(ragas, state.profile.selectedRaga, 'No specific raga')}</select>
+        </label>
+      </div>
+      <div class="choice-card wide help-card">
+        <strong>Raga behaviour guardrail</strong>
+        <p class="subtle">A raga is not just a scale. Use ascent/descent, emphasis, phrase grammar, drone and time/mood as behaviour.</p>
+        ${selectedRaga ? `<ul>
+          <li><strong>${escapeHtml(selectedRaga.name)}</strong>: ${escapeHtml(selectedRaga.timeWindow || 'time open')}</li>
+          <li>${escapeHtml((selectedRaga.keyFeatures || [])[0] || selectedRaga.note || 'Use the raga as a behaviour card.')}</li>
+        </ul>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderMotion() {
+  els.wizardBody.innerHTML = `
+    <div class="choice-grid">
+      <div class="choice-card">
+        <label>Tempo
+          <input data-profile="tempo" type="number" min="40" max="220" value="${state.profile.tempo}">
+        </label>
+      </div>
+      <div class="choice-card">
+        <label>Groove / rhythm feel
+          <select data-profile="groove">${optionList(APP_OPTIONS.grooveFeels, state.profile.groove)}</select>
+        </label>
+      </div>
+      <div class="choice-card wide help-card">
+        <strong>Keep it playable</strong>
+        <p class="subtle">Choose a feel you can imagine performing with guitar, Ableton clips and live hardware — not only programming in the piano roll.</p>
+      </div>
+    </div>
+  `;
+}
+
+function renderIdentity() {
+  els.wizardBody.innerHTML = `
+    <div class="choice-grid">
+      <div class="choice-card">
+        <label>Mood
+          <select data-profile="mood">${optionList(APP_OPTIONS.moods, state.profile.mood)}</select>
+        </label>
+      </div>
+      <div class="choice-card">
+        <label>Section type
+          <select data-profile="sectionType">${optionList(APP_OPTIONS.sectionTypes, state.profile.sectionType)}</select>
+        </label>
+      </div>
+      <div class="choice-card">
+        <label>Energy
+          <select data-profile="energy">${optionList(APP_OPTIONS.energyLevels, state.profile.energy)}</select>
+        </label>
+      </div>
+      <div class="choice-card">
+        <label>Short intent note
+          <textarea data-profile="notes" rows="4" placeholder="What should this section feel like?">${escapeHtml(state.profile.notes || '')}</textarea>
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+function renderSource() {
+  const gear = APP_OPTIONS.gear.map((g) => `
+    <label class="toggle-pill">
+      <input data-profile="gearFocus" type="checkbox" value="${g.id}" ${(state.profile.gearFocus || []).includes(g.id) ? 'checked' : ''}>
+      ${escapeHtml(g.label)}
+    </label>
+  `).join('');
+  const domains = APP_OPTIONS.domainFilters.map((d) => `
+    <label class="toggle-pill">
+      <input data-profile="domainFilters" type="checkbox" value="${d}" ${(state.profile.domainFilters || []).includes(d) ? 'checked' : ''}>
+      ${escapeHtml(d)}
+    </label>
+  `).join('');
+  els.wizardBody.innerHTML = `
+    <div class="choice-grid">
+      <div class="choice-card wide">
+        <label>Main instrument or sound source
+          <select data-profile="instrument">${optionList(APP_OPTIONS.instruments, state.profile.instrument)}</select>
+        </label>
+      </div>
+      <div class="choice-card wide">
+        <strong>Optional gear focus</strong>
+        <div class="gear-grid">${gear}</div>
+      </div>
+      <div class="choice-card wide">
+        <strong>Knowledge filters</strong>
+        <p class="subtle">Keep this light. Pick only the lanes you want the next prompts to favour.</p>
+        <div class="domain-grid">${domains}</div>
+      </div>
+    </div>
+  `;
+}
+
+async function ensureIdeas() {
+  if (state.ideas) return true;
+  els.loadIdeasBtn.textContent = 'Loading…';
   try {
-    state.bootstrap = await loadBootstrapData();
-    hydrateState();
-    renderTopbarStats();
-    renderFormOptions();
-    renderFormValues();
-    renderChecklists();
-    renderStageNav();
-    renderStageHeader();
-    renderGearGuidance();
-    renderSectionSummary();
-    renderPlan();
-    renderTracePanel();
-    renderSavedPlans();
-    renderPrompts();
-    switchView(state.activeView);
-    bindEvents();
-  } catch (error) {
-    console.error(error);
-    els.topbarStats.innerHTML = `<div class="info-card"><strong>Could not load bootstrap data</strong><p class="muted">${error.message}</p></div>`;
-  } finally {
-    hideLoading();
+    state.ideas = await loadIdeas();
+    els.loadIdeasBtn.textContent = 'Idea pool loaded';
+    toast('Idea pool loaded');
+    return true;
+  } catch (err) {
+    toast('Could not load idea pool. Run from a local server.');
+    console.error(err);
+    return false;
   }
 }
 
-init();
+async function refreshPrompts({ inspiration = false } = {}) {
+  if (!(await ensureIdeas())) return;
+  const screen = currentScreen();
+  if (screen.type !== 'build') return;
+  state.currentPrompts = generateStagePrompts(state.ideas, state.profile, screen.id, state.plan, { inspiration }).slice(0, 3);
+  renderBuild();
+}
+
+function renderPromptCard(idea, index) {
+  return `
+    <article class="prompt-card ${index === 0 ? 'featured' : ''}">
+      <div class="chip-row">
+        <span class="chip">Book ${idea.bookNumber}</span>
+        <span class="chip">${escapeHtml(idea.stageBucket.replaceAll('_',' '))}</span>
+        <span class="chip">${escapeHtml(idea.energy || 'energy open')}</span>
+        ${idea._score ? `<span class="chip">match ${idea._score}</span>` : ''}
+      </div>
+      <p class="prompt-text">${escapeHtml(idea.prompt)}</p>
+      <div class="chip-row">
+        ${(idea.instrumentFocus || []).slice(0, 3).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}
+      </div>
+      <div class="prompt-actions">
+        <button class="btn primary small" data-use="${idea.id}">Use this</button>
+        <button class="btn small" data-source="${idea.id}">Source</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderBuild() {
+  const screen = currentScreen();
+  const chosen = state.plan[screen.id];
+  if (chosen) {
+    els.wizardBody.innerHTML = `
+      <div class="help-card">
+        <strong>Chosen for this step</strong>
+        <p class="prompt-text" style="margin-top:8px">${escapeHtml(chosen.prompt)}</p>
+        <div class="chip-row" style="margin-top:10px">
+          <span class="chip">Book ${chosen.bookNumber}</span>
+          <span class="chip">${escapeHtml(chosen.sourceBook || '')}</span>
+        </div>
+        <div class="prompt-actions" style="margin-top:14px">
+          <button class="btn small" data-source="${chosen.id}">Source</button>
+          <button class="btn danger small" data-rechoose="${screen.id}">Choose again</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  if (!state.currentPrompts.length) {
+    els.wizardBody.innerHTML = `
+      <div class="help-card">
+        <strong>Ready for prompts</strong>
+        <p class="subtle">Load the audited idea pool and the wizard will give you three focused options for this step.</p>
+        <div class="prompt-actions" style="margin-top:14px">
+          <button class="btn primary" data-refresh="normal">Show prompts</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  els.wizardBody.innerHTML = `
+    <div class="prompt-list">
+      ${state.currentPrompts.map(renderPromptCard).join('')}
+    </div>
+  `;
+}
+
+function renderBody() {
+  const screen = currentScreen();
+  if (screen.id === 'start') renderStart();
+  else if (screen.id === 'pitch') renderPitch();
+  else if (screen.id === 'motion') renderMotion();
+  else if (screen.id === 'identity') renderIdentity();
+  else if (screen.id === 'source') renderSource();
+  else renderBuild();
+}
+
+function renderAll() {
+  renderStepper();
+  renderHeader();
+  renderBody();
+  renderProfileSummary();
+  renderPlanSummary();
+  renderTrace();
+}
+
+function next() {
+  if (state.currentIndex < SCREENS.length - 1) {
+    state.currentIndex += 1;
+    state.currentPrompts = [];
+    renderAll();
+    saveAppState();
+    if (currentScreen().type === 'build' && state.ideas) refreshPrompts();
+  } else {
+    toast('Section wizard complete');
+  }
+}
+
+function back() {
+  if (state.currentIndex === 0) return;
+  state.currentIndex -= 1;
+  state.currentPrompts = [];
+  renderAll();
+  saveAppState();
+  if (currentScreen().type === 'build' && state.ideas && !state.plan[currentScreen().id]) refreshPrompts();
+}
+
+function bindEvents() {
+  els.stepper.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-index]');
+    if (!btn) return;
+    state.currentIndex = Number(btn.dataset.index);
+    state.currentPrompts = [];
+    renderAll();
+    saveAppState();
+    if (currentScreen().type === 'build' && state.ideas && !state.plan[currentScreen().id]) refreshPrompts();
+  });
+
+  els.wizardBody.addEventListener('input', (e) => {
+    const input = e.target.closest('[data-profile]');
+    if (!input) return;
+    setProfileFromInput(input.dataset.profile, input.value, input.checked);
+  });
+  els.wizardBody.addEventListener('change', (e) => {
+    const input = e.target.closest('[data-profile]');
+    if (!input) return;
+    setProfileFromInput(input.dataset.profile, input.value, input.checked);
+    if (currentScreen().id === 'pitch') renderPitch();
+  });
+  els.wizardBody.addEventListener('click', async (e) => {
+    if (e.target.closest('[data-refresh]')) return refreshPrompts();
+    const use = e.target.closest('[data-use]');
+    if (use) {
+      const idea = state.currentPrompts.find((item) => item.id === use.dataset.use);
+      if (!idea) return;
+      state.plan[currentScreen().id] = idea;
+      state.traceIdea = idea;
+      state.currentPrompts = [];
+      renderAll();
+      saveAppState();
+      return;
+    }
+    const source = e.target.closest('[data-source]');
+    if (source) {
+      const all = [...state.currentPrompts, ...Object.values(state.plan)];
+      state.traceIdea = all.find((item) => item.id === source.dataset.source) || null;
+      renderTrace();
+      saveAppState();
+      return;
+    }
+    const rechoose = e.target.closest('[data-rechoose]');
+    if (rechoose) {
+      delete state.plan[rechoose.dataset.rechoose];
+      renderAll();
+      saveAppState();
+      refreshPrompts();
+    }
+  });
+
+  els.nextBtn.addEventListener('click', next);
+  els.backBtn.addEventListener('click', back);
+  els.loadIdeasBtn.addEventListener('click', () => refreshPrompts());
+  els.inspireBtn.addEventListener('click', () => refreshPrompts({ inspiration: true }));
+  els.saveBtn.addEventListener('click', () => {
+    savePlanSnapshot(buildPayload());
+    toast('Saved locally');
+  });
+  els.exportJsonBtn.addEventListener('click', () => exportPlanJson(buildPayload()));
+  els.exportMdBtn.addEventListener('click', () => exportPlanMarkdown(buildPayload(), STAGES));
+  els.searchBtn.addEventListener('click', async () => {
+    if (!(await ensureIdeas())) return;
+    const results = searchIdeas(state.ideas, els.searchInput.value, {}).slice(0, 8);
+    els.searchResults.innerHTML = results.length ? results.map((idea) => `
+      <div class="search-item">
+        <p>${escapeHtml(idea.prompt)}</p>
+        <div class="chip-row" style="margin-top:8px"><span class="chip">Book ${idea.bookNumber}</span><span class="chip">${escapeHtml(idea.stageBucket.replaceAll('_',' '))}</span></div>
+      </div>
+    `).join('') : `<p class="subtle">No results.</p>`;
+  });
+}
+
+async function init() {
+  state.bootstrap = await loadBootstrapData();
+  hydrateState();
+  renderDataStrip();
+  renderAll();
+  bindEvents();
+}
+
+init().catch((err) => {
+  console.error(err);
+  els.dataStrip.textContent = 'Could not load app data. Make sure you are running from a local server or GitHub Pages.';
+});

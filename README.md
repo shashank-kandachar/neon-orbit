@@ -1,53 +1,18 @@
-# Neon Orbit — Composition Guide (Stage 1 skeleton)
+# Neon Orbit — Section Wizard
 
-This is a fresh local-first web app skeleton for the new Neon Orbit composition-guidance app.
+This is the cleaner wizard-style version of the Neon Orbit Composition Guide.
 
-## What this build includes
+## What changed from the first skeleton
 
-- Full-width psychedelic-but-practical UI
-- Landing/setup workflow for:
-  - scale / raga / mode / pitch world
-  - tempo
-  - mood
-  - section type
-  - energy
-  - groove / rhythm feel
-  - main instrument / sound source
-  - gear focus
-- Guided section-builder stages
-- Prompt engine wired to the audited authority-derived compact idea pool
-- Source trace panel
-- Browse/search mode
-- Controlled inspiration mode
-- Local saved snapshots
-- Markdown and JSON export
+- One focused step at a time instead of a large dashboard.
+- Setup is separated from composition.
+- Only three prompt choices are shown at each build step.
+- Source trace, chosen prompts and search are hidden inside collapsible panels.
+- The idea pool loads only when needed.
+- The visual style is still psychedelic, but calmer and less cluttered.
+- Designed to feel better on iPhone Safari.
 
-## Data basis
-
-The data bundle was generated from the audited authority archive:
-
-- `Neon_Orbit_Master_All_Books_01_72_AUDITED_COMPLETE.zip`
-
-Included compact app data:
-
-- `data/ideas.compact.json`
-- `data/manifest.json`
-- `data/source-ledger.json`
-- `data/raga-cards.json`
-- `data/seed-panels.json`
-
-## Notes
-
-- This is a clean Stage 1 skeleton, not yet the final production build.
-- It preserves idea count and source metadata in the compact bundle.
-- The prompt engine is intentionally selective and does not dump the entire pool.
-- The compact data file is large, so the first load can take a moment.
-
-## How to run locally
-
-Because browsers often block local JSON loading from `file://`, serve the folder over a tiny local web server.
-
-### Option 1 — Python
+## Run locally
 
 From this folder:
 
@@ -61,14 +26,16 @@ Then open:
 http://localhost:8000
 ```
 
-### Option 2 — VS Code Live Server
+## GitHub Pages
 
-Open the folder and run it with Live Server.
+Upload the contents of this folder to the root of your `neon-orbit` repo.
 
-## Suggested next steps
+Your app URL should be:
 
-1. Tighten the prompt scoring and stage mapping.
-2. Split the compact idea bundle into smarter lazy-load chunks.
-3. Add deeper raga cards and gear-specific builders.
-4. Add section library, templates and better export formatting.
-5. Add richer source traceability and book/domain drill-down.
+```text
+https://shashank-kandachar.github.io/neon-orbit/
+```
+
+## Data
+
+This build still uses the audited Books 01–72 compact app data in `data/`.
