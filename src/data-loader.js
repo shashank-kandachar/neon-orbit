@@ -1,5 +1,6 @@
 let bootstrapCache = null;
 let ideaCache = null;
+let promptIndexCache = null;
 
 async function getJson(path) {
   const response = await fetch(path);
@@ -21,23 +22,42 @@ export async function loadBootstrapData() {
   return bootstrapCache;
 }
 
+function ensureIdeaBlob(idea) {
+  if (idea._blob) return;
+  idea._blob = [
+    idea.prompt,
+    idea.neonOrbitUse,
+    idea.category,
+    idea.useCase,
+    ...(idea.tags || []),
+    ...(idea.instrumentFocus || []),
+    ...(idea.domainHints || []),
+    ...(idea.gearHints || []),
+    idea.sourceBook,
+    idea.sourceAuthor,
+    idea.sourceConcept,
+    idea.wizardStage,
+    idea.wizardStageDisplay,
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+async function loadPromptIndex() {
+  if (promptIndexCache) return promptIndexCache;
+  promptIndexCache = await getJson('./data/prompt-index.json');
+  return promptIndexCache;
+}
+
 export async function loadIdeas() {
   if (ideaCache) return ideaCache;
-  ideaCache = await getJson('./data/ideas.compact.json');
+  try {
+    const promptIndex = await loadPromptIndex();
+    ideaCache = Object.values(promptIndex.stageBuckets || {}).flat();
+  } catch (error) {
+    console.warn('Prompt index unavailable; falling back to full idea pool.', error);
+    ideaCache = await getJson('./data/ideas.compact.json');
+  }
   for (const idea of ideaCache) {
-    idea._blob = [
-      idea.prompt,
-      idea.neonOrbitUse,
-      idea.category,
-      idea.useCase,
-      ...(idea.tags || []),
-      ...(idea.instrumentFocus || []),
-      ...(idea.domainHints || []),
-      idea.sourceBook,
-      idea.sourceAuthor,
-      idea.wizardStage,
-      idea.wizardStageDisplay,
-    ].filter(Boolean).join(' ').toLowerCase();
+    ensureIdeaBlob(idea);
   }
   return ideaCache;
 }

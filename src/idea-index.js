@@ -3,7 +3,7 @@ import {
   ideaClarityScore,
   ideaIsUsable,
   normaliseIdeaPromptKey,
-} from './idea-presenter.js?v=keyfirst3.23';
+} from './idea-presenter.js?v=keyfirst3.26';
 
 const INDEX_CACHE = new WeakMap();
 
@@ -235,8 +235,8 @@ function qualityScore(idea) {
 
 function buildRecord(idea, ordinal) {
   const stageId = idea.stageBucket || 'section_identity';
-  const promptKey = normaliseIdeaPromptKey(idea);
-  const tags = deriveIndexTags(idea, stageId);
+  const promptKey = idea._promptKey || normaliseIdeaPromptKey(idea);
+  const tags = idea._indexTags?.length ? idea._indexTags : deriveIndexTags(idea, stageId);
   const blob = idea._blob || normalise([
     idea.prompt,
     idea.neonOrbitUse,
@@ -255,7 +255,7 @@ function buildRecord(idea, ordinal) {
   return {
     idea,
     id: idea.id,
-    key: `${idea.id || 'idea'}::${idea.globalIndex || ordinal}`,
+    key: idea._indexKey || `${idea.id || 'idea'}::${idea.globalIndex || ordinal}`,
     stageId,
     promptKey,
     tags,
@@ -266,7 +266,7 @@ function buildRecord(idea, ordinal) {
     sourceBook: idea.sourceBook || 'Unknown source',
     bookNumber: idea.bookNumber || '',
     blob,
-    clarity: ideaClarityScore(idea),
+    clarity: Number.isFinite(Number(idea._clarityScore)) ? Number(idea._clarityScore) : ideaClarityScore(idea),
     quality: qualityScore(idea),
   };
 }
@@ -484,7 +484,7 @@ function scoreRecord(record, profile, stageId, tags, options = {}) {
 
 function withIndexMetadata(record, score, mode, tags, index) {
   const group = index.promptGroups.get(record.promptKey) || [];
-  const sourceAlternates = group
+  const groupedAlternates = group
     .filter((item) => item.key !== record.key)
     .slice(0, 4)
     .map((item) => ({
@@ -493,6 +493,7 @@ function withIndexMetadata(record, score, mode, tags, index) {
       sourceBook: item.sourceBook,
       stageBucket: item.stageId,
     }));
+  const sourceAlternates = (record.idea._sourceAlternates?.length ? record.idea._sourceAlternates : groupedAlternates).slice(0, 12);
 
   return {
     ...record.idea,
@@ -501,7 +502,7 @@ function withIndexMetadata(record, score, mode, tags, index) {
     _indexTags: record.tags,
     _contextTags: tags,
     _contextMode: mode,
-    _relatedIdeaCount: group.length,
+    _relatedIdeaCount: Number(record.idea._relatedIdeaCount || group.length),
     _sourceAlternates: sourceAlternates,
   };
 }

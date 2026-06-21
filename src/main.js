@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.23';
-import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.23';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.23';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.23';
-import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.23';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot } from './storage.js?v=keyfirst3.23';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.23';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.26';
+import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.26';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.26';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.26';
+import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.26';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot } from './storage.js?v=keyfirst3.26';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.26';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -272,6 +272,29 @@ function renderContextActions(stageId) {
         </button>
       `).join('')}
     </div>
+  `;
+}
+
+function renderIdeaCompanion(presentation) {
+  return `
+    <aside class="idea-companion">
+      <div class="companion-block">
+        <span class="mini-label">What this means</span>
+        <p>${escapeHtml(presentation.plainMeaning || 'Try the idea in the current section and keep only what makes the music clearer.')}</p>
+      </div>
+      ${presentation.concepts?.length ? `
+        <div class="concept-list">
+          ${presentation.concepts.map((concept) => `
+            <div class="concept-item">
+              <strong>${escapeHtml(concept.term)}</strong>
+              <p>${escapeHtml(concept.meaning)}</p>
+              ${concept.tryThis ? `<em>${escapeHtml(concept.tryThis)}</em>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+      ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
+    </aside>
   `;
 }
 
@@ -834,11 +857,15 @@ function renderPromptCard(idea, index) {
           ${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}
         </div>
       </div>
-      <p class="prompt-text">${escapeHtml(presentation.action)}</p>
-      <ol class="prompt-steps">
-        ${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
-      </ol>
-      ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
+      <div class="idea-card-grid">
+        <div class="idea-main">
+          <p class="prompt-text">${escapeHtml(presentation.action)}</p>
+          <ol class="prompt-steps">
+            ${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
+          </ol>
+        </div>
+        ${renderIdeaCompanion(presentation)}
+      </div>
       <div class="prompt-footer">
         <span>${escapeHtml(presentation.sourceLine)}</span>
         <span>${escapeHtml(promptModeLabel(mode))}</span>
@@ -868,14 +895,18 @@ function renderBuild() {
     els.wizardBody.innerHTML = `
       <div class="build-workspace">
         <div class="phase-focus">${focusTabs}</div>
-        <div class="info-card wide chosen-idea">
-        <span class="mini-label">Chosen for ${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</span>
-        <h3>${escapeHtml(presentation.title)}</h3>
-        <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
-        <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
-        ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
-        <div class="chips" style="margin-top:10px">${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
-        <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(ideaRef(chosen))}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button></div>
+        <div class="info-card wide chosen-idea prompt-card">
+          <span class="mini-label">Chosen for ${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</span>
+          <h3>${escapeHtml(presentation.title)}</h3>
+          <div class="chips" style="margin-top:10px">${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
+          <div class="idea-card-grid">
+            <div class="idea-main">
+              <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
+              <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+            </div>
+            ${renderIdeaCompanion(presentation)}
+          </div>
+          <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(ideaRef(chosen))}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button></div>
         </div>
       </div>
     `;
@@ -1189,8 +1220,7 @@ function bindEvents() {
   els.searchBtn.addEventListener('click', async () => {
     const ok = await ensureIdeasLoaded();
     if (!ok) return;
-    const filters = currentScreen().type === 'build' ? { stage: activeStageId() } : {};
-    const results = searchIdeas(state.ideas, els.searchInput.value, filters).slice(0, 8);
+    const results = searchIdeas(state.ideas, els.searchInput.value, {}).slice(0, 8);
     state.searchResults = results;
     els.searchResults.innerHTML = results.length ? results.map((idea) => {
       const presentation = ideaPresentation(idea, idea.stageBucket || currentScreen().id);
@@ -1198,6 +1228,7 @@ function bindEvents() {
         <div class="result-card">
           <span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
           <p>${escapeHtml(presentation.action)}</p>
+          <p class="result-explain">${escapeHtml(presentation.plainMeaning || '')}</p>
           <div class="chips" style="margin-top:8px">${presentation.tags.slice(0, 4).map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
           <div class="prompt-actions" style="margin-top:10px"><button class="btn small" data-source="${escapeHtml(ideaRef(idea))}">Source</button></div>
         </div>

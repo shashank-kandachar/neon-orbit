@@ -256,6 +256,53 @@ select:focus, input:focus, textarea:focus { border-color: var(--line-strong); bo
   gap: 9px;
 }
 .prompt-text { color: var(--text); font-size: 1.03rem; line-height: 1.56; }
+.idea-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(260px, 0.95fr);
+  gap: 14px;
+  align-items: start;
+  margin-top: 10px;
+}
+.idea-main,
+.idea-companion {
+  min-width: 0;
+}
+.idea-companion {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(3,5,14,0.24);
+  padding: 12px;
+}
+.companion-block p,
+.concept-item p,
+.concept-item em,
+.result-explain {
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.concept-list {
+  display: grid;
+  gap: 8px;
+}
+.concept-item {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 8px;
+}
+.concept-item strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.concept-item em {
+  color: var(--green);
+  font-style: normal;
+}
+.result-explain {
+  margin-top: 6px;
+}
 .prompt-steps {
   display: grid;
   gap: 6px;
@@ -960,6 +1007,9 @@ button.entry-card {
   }
   .setup-panel {
     overflow: visible;
+  }
+  .idea-card-grid {
+    grid-template-columns: 1fr;
   }
   .wizard-body {
     padding-right: 0;

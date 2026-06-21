@@ -73,8 +73,19 @@ export function exportPlanMarkdown(payload, stages, trigger) {
     lines.push(`### ${stage.label}`);
     lines.push(item.friendly?.action || item.prompt);
     lines.push('');
+    if (item.friendly?.plainMeaning) {
+      lines.push(`**What this means:** ${item.friendly.plainMeaning}`);
+      lines.push('');
+    }
     if (item.friendly?.steps?.length) {
       item.friendly.steps.forEach((step) => lines.push(`- ${step}`));
+      lines.push('');
+    }
+    if (item.friendly?.concepts?.length) {
+      lines.push('**Terms / concepts:**');
+      item.friendly.concepts.forEach((concept) => {
+        lines.push(`- **${concept.term}:** ${concept.meaning}${concept.tryThis ? ` Try: ${concept.tryThis}` : ''}`);
+      });
       lines.push('');
     }
     if (item.friendly?.pitchTip) lines.push(`- **Pitch note:** ${item.friendly.pitchTip}`);
