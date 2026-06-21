@@ -1,20 +1,23 @@
-# Neon Orbit — Section Wizard
+# Neon Orbit — Key-first Clean Wizard v3
 
-This is the cleaner wizard-style version of the Neon Orbit Composition Guide.
+This is a safer, cleaner replacement for the previous wizard package.
 
-## What changed from the first skeleton
+## Why this version exists
 
-- One focused step at a time instead of a large dashboard.
-- Setup is separated from composition.
-- Only three prompt choices are shown at each build step.
-- Source trace, chosen prompts and search are hidden inside collapsible panels.
-- The idea pool loads only when needed.
-- The visual style is still psychedelic, but calmer and less cluttered.
-- Designed to feel better on iPhone Safari.
+The earlier wizard could look broken if `index.html`, `styles/app.css` and `src/main.js` were not all updated together, or if Safari/GitHub Pages cached old assets. This version uses simpler CSS, cache-busted file links, and a single focused wizard card.
+
+## Replace these files together
+
+When updating GitHub, replace the whole repo contents with this package, or at minimum replace these files together:
+
+- `index.html`
+- `styles/app.css`
+- `src/main.js`
+- `README.md`
+
+Keep the existing `data/` folder, `src/config.js`, `src/data-loader.js`, `src/engine.js`, `src/export-utils.js` and `src/storage.js`.
 
 ## Run locally
-
-From this folder:
 
 ```bash
 python3 -m http.server 8000
@@ -26,16 +29,27 @@ Then open:
 http://localhost:8000
 ```
 
-## GitHub Pages
-
-Upload the contents of this folder to the root of your `neon-orbit` repo.
-
-Your app URL should be:
+## GitHub Pages URL
 
 ```text
 https://shashank-kandachar.github.io/neon-orbit/
 ```
 
-## Data
+## Important
 
-This build still uses the audited Books 01–72 compact app data in `data/`.
+After pushing to GitHub, hard refresh Safari or add `?v=2` to the URL once:
+
+```text
+https://shashank-kandachar.github.io/neon-orbit/?v=2
+```
+
+
+## v3 change
+
+The pitch screen now follows the requested reference-style flow:
+
+1. Choose the tonic/root note.
+2. Choose the scale, mode or raga.
+3. The app displays the combined key world, for example `D Dorian` or `A Bhairavi`.
+
+The rest of the wizard remains clean and step-by-step.

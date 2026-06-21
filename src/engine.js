@@ -186,8 +186,10 @@ export function searchIdeas(ideas, query, filters = {}) {
 }
 
 export function buildSectionSummary(profile, plan) {
+  const scaleLabel = profile.selectedRaga || profile.pitchWorld || 'Pitch world';
+  const keyLabel = `${profile.keyRoot || ''} ${scaleLabel}`.trim();
   return {
-    title: `${profile.sectionType || 'Section'} — ${profile.mood || 'Mood'} / ${profile.pitchWorld || 'Pitch world'}`,
+    title: `${profile.sectionType || 'Section'} — ${profile.mood || 'Mood'} / ${keyLabel}`,
     subtitle: `${profile.tempo || 0} BPM · ${profile.groove || 'Groove'} · ${profile.instrument || 'Instrument'}`,
     completedStages: Object.keys(plan).length,
     selectedPrompts: Object.values(plan).map((item) => item.prompt),

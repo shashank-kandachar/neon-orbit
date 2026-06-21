@@ -17,6 +17,7 @@ export const STAGES = [
 ];
 
 export const APP_OPTIONS = {
+  keyRoots: ['C', 'C♯ / D♭', 'D', 'D♯ / E♭', 'E', 'F', 'F♯ / G♭', 'G', 'G♯ / A♭', 'A', 'A♯ / B♭', 'B'],
   pitchWorlds: [
     'Ionian', 'Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian', 'Locrian',
     'Melodic minor', 'Harmonic minor', 'Dorian ♭2', 'Lydian dominant', 'Altered',
@@ -59,7 +60,8 @@ export const APP_OPTIONS = {
 };
 
 export const DEFAULT_PROFILE = {
-  pitchWorld: 'Raga-driven',
+  keyRoot: 'D',
+  pitchWorld: 'Dorian',
   selectedRaga: '',
   tempo: 110,
   mood: 'Hypnotic',
