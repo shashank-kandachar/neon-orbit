@@ -1,4 +1,5 @@
-import { ideaClarityScore, ideaIsUsable, normaliseIdeaPromptKey } from './idea-presenter.js?v=keyfirst3.15';
+import { ideaClarityScore } from './idea-presenter.js?v=keyfirst3.23';
+import { searchIdeaIndex, selectContextualIdeas } from './idea-index.js?v=keyfirst3.23';
 
 const ENERGY_ALIASES = {
   'low': ['low', 'quiet', 'intimate', 'subtle', 'ambient'],
@@ -31,10 +32,6 @@ const STAGE_RELATED = {
 
 function normalise(value) {
   return (value || '').toString().trim().toLowerCase();
-}
-
-function hasPromptText(idea) {
-  return typeof idea.prompt === 'string' && idea.prompt.trim().length > 0;
 }
 
 function includesAny(haystack, needles) {
@@ -155,56 +152,11 @@ export function scoreIdea(idea, profile, stageId, { inspiration = false } = {}) 
 }
 
 export function generateStagePrompts(ideas, profile, stageId, plan = {}, options = {}) {
-  const inspiration = options.inspiration || false;
-  const selectedIds = new Set(Object.values(plan).filter(Boolean).map((entry) => entry.id));
-  const candidates = ideas
-    .filter(hasPromptText)
-    .filter(ideaIsUsable)
-    .map((idea) => ({ ...idea, _score: scoreIdea(idea, profile, stageId, { inspiration }) }))
-    .filter((idea) => !selectedIds.has(idea.id))
-    .filter((idea) => idea._score >= (inspiration ? 18 : 24));
-
-  candidates.sort((a, b) => b._score - a._score);
-
-  const picked = [];
-  const sourceUsage = new Map();
-  const promptUsage = new Set();
-  for (const idea of candidates) {
-    const promptKey = normaliseIdeaPromptKey(idea);
-    if (!promptKey || promptUsage.has(promptKey)) continue;
-    const current = sourceUsage.get(idea.sourceBook) || 0;
-    if (current >= 2 && picked.length < 10) continue;
-    picked.push(idea);
-    promptUsage.add(promptKey);
-    sourceUsage.set(idea.sourceBook, current + 1);
-    if (picked.length >= 6) break;
-  }
-
-  if (!picked.length) {
-    const fallback = [];
-    const fallbackUsage = new Set();
-    for (const idea of ideas.filter(hasPromptText).filter(ideaIsUsable)) {
-      const promptKey = normaliseIdeaPromptKey(idea);
-      if (!promptKey || fallbackUsage.has(promptKey)) continue;
-      fallback.push(idea);
-      fallbackUsage.add(promptKey);
-      if (fallback.length >= 6) break;
-    }
-    return fallback;
-  }
-  return picked;
+  return selectContextualIdeas(ideas, profile, stageId, plan, options);
 }
 
 export function searchIdeas(ideas, query, filters = {}) {
-  const q = normalise(query);
-  const results = ideas.filter((idea) => {
-    if (q && !(idea._blob || '').includes(q)) return false;
-    if (filters.stage && idea.stageBucket !== filters.stage) return false;
-    if (filters.domain && !(idea.domainHints || []).includes(filters.domain)) return false;
-    if (filters.gear && !(idea.gearHints || []).includes(filters.gear)) return false;
-    return true;
-  });
-  return results.slice(0, 50);
+  return searchIdeaIndex(ideas, query, filters);
 }
 
 export function buildSectionSummary(profile, plan) {

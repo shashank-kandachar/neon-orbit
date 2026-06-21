@@ -250,11 +250,16 @@ export function getKeyRootOptions(spelling = 'sharps') {
 function notesFromIntervals(root, intervals = [], spelling = 'sharps') {
   const rootPc = NOTE_TO_PC.get(root);
   if (rootPc === undefined) return [];
-  const labels = noteLabelsFor(spelling);
   return intervals
-    .map((interval) => INTERVAL_TO_SEMITONE[interval])
-    .filter((value) => value !== undefined)
-    .map((offset) => labels[(rootPc + offset) % 12]);
+    .map((interval) => {
+      const offset = INTERVAL_TO_SEMITONE[interval];
+      if (offset === undefined) return null;
+      const pc = (rootPc + offset) % 12;
+      if (interval.includes('♭')) return NOTE_LABELS_FLAT[pc];
+      if (interval.includes('♯') || interval.includes('#')) return NOTE_LABELS_SHARP[pc];
+      return noteLabelsFor(spelling)[pc];
+    })
+    .filter(Boolean);
 }
 
 function pitchPath(profile = {}) {

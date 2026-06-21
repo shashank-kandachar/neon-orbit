@@ -1,4 +1,4 @@
-import { getPitchContext } from './pitch-utils.js?v=keyfirst3.15';
+import { getPitchContext } from './pitch-utils.js?v=keyfirst3.23';
 
 const STAGE_TITLES = {
   section_identity: 'Shape the feeling',
@@ -60,7 +60,21 @@ const JARGON_REPLACEMENTS = [
   [/\bnormalized amplitude\b/gi, 'even volume'],
   [/\bamplitude\b/gi, 'volume'],
   [/\bglitch as visible process\b/gi, 'one clear edit or mistake that becomes part of the sound'],
+  [/\bsource-hidden listening\b/gi, 'a hidden reference sound'],
   [/\bsource file discipline\b/gi, 'one clear working rule'],
+  [/\borganised sound\b/gi, 'a clear sound idea'],
+  [/\borganized sound\b/gi, 'a clear sound idea'],
+  [/\bcircuit noise texture\b/gi, 'noisy synth texture'],
+  [/\bfragments becoming mantras\b/gi, 'a short fragment that starts to feel like a mantra'],
+  [/\bwithheld drop\b/gi, 'delayed drop'],
+  [/\bParallel Harmony\b/g, 'Move the same chord shape in parallel'],
+  [/\braga-rock\b/gi, 'raga-inspired'],
+  [/\bdonor topic or style component\b/gi, 'borrowed colour'],
+  [/\btransducer type, pickup pattern, and frequency response\b/gi, 'how the mic hears the sound and how bright it is'],
+  [/\bbeginner-clear engineering logic\b/gi, 'simple engineering logic'],
+  [/\bconsumer-level tool\b/gi, 'simple everyday tool'],
+  [/\bpassive consumption\b/gi, 'passive listening'],
+  [/\bflat dynamics\b/gi, 'lifeless dynamics'],
   [/\bapp engine\b/gi, 'composition helper'],
   [/\bspectrum\b/gi, 'brightness'],
   [/\bdensity\b/gi, 'how crowded it feels'],
@@ -151,7 +165,12 @@ function keepShort(text) {
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   const selected = sentences.slice(0, 2).join(' ');
   if (selected.length <= 240) return selected;
-  return `${selected.slice(0, 237).trim()}...`;
+  const clipped = selected
+    .slice(0, 237)
+    .replace(/\s+\S*$/, '')
+    .replace(/\bthen$/i, '')
+    .trim();
+  return `${clipped}...`;
 }
 
 function simplifyPrompt(rawPrompt = '') {
@@ -182,6 +201,10 @@ function simplifyPrompt(rawPrompt = '') {
     .replace(/\bsection\b/gi, 'part')
     .replace(/\bthis track exercise\b/gi, 'short exercise')
     .replace(/\bshort this track exercise\b/gi, 'short exercise')
+    .replace(/\bcurrent this track track\b/gi, 'this track')
+    .replace(/\bthis track track\b/gi, 'this track')
+    .replace(/\bcurrent this track\b/gi, 'this track')
+    .replace(/\bthe this track\b/gi, 'this track')
     .replace(/\butilise\b/gi, 'use')
     .replace(/\bprioritise\b/gi, 'focus on')
     .replace(/\bprioritize\b/gi, 'focus on')
@@ -333,13 +356,14 @@ function buildPitchTip(stageId, pitchContext) {
 export function buildIdeaPresentation(idea, profile, stageId, context = {}) {
   const pitchContext = getPitchContext(profile, context.ragaCard || null);
   const action = simplifyPrompt(idea.prompt || '');
-  const tags = deriveIdeaTags(idea, stageId);
+  const tags = [];
+  for (const tag of [...deriveIdeaTags(idea, stageId), ...(idea._indexTags || [])]) addTag(tags, tag);
   const pitchTip = buildPitchTip(stageId, pitchContext);
 
   return {
     title: STAGE_TITLES[stageId] || 'Try this',
     action,
-    tags,
+    tags: tags.slice(0, 7),
     steps: buildSteps(stageId, profile, pitchContext),
     pitchTip,
     sourceLine: idea.sourceBook ? `Book ${idea.bookNumber} - ${idea.sourceBook}` : 'Source trace available',

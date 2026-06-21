@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.15';
-import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.15';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.15';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.15';
-import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.15';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot } from './storage.js?v=keyfirst3.15';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.15';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.23';
+import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.23';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.23';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.23';
+import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.23';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot } from './storage.js?v=keyfirst3.23';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.23';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -58,6 +58,42 @@ const GROOVE_GUIDANCE = {
   'Indian cyclic feel': 'Choose a cycle length and mark the return clearly. Let melodic phrases lean towards that return.',
 };
 
+const MODE_LABELS = {
+  normal: 'Best fit',
+  fresh: 'Fresh source',
+  melody: 'More melody',
+  raga: 'More raga behaviour',
+  groove: 'More groove',
+  rhythm: 'More rhythm',
+  bass: 'More bass',
+  harmony: 'More drone',
+  texture: 'More texture',
+  movement: 'More movement',
+  arrangement: 'More arrangement',
+  live: 'More live',
+  finish: 'More finish',
+  gear: 'More gear',
+  deeper: 'Dig deeper',
+};
+
+const STAGE_REFRESH_MODES = {
+  section_identity: ['arrangement', 'fresh', 'deeper'],
+  pitch_material: ['melody', 'raga', 'fresh'],
+  tempo_groove: ['groove', 'rhythm', 'fresh'],
+  section_role: ['arrangement', 'live', 'fresh'],
+  rhythmic_foundation: ['groove', 'rhythm', 'fresh'],
+  bass_pulse: ['bass', 'groove', 'fresh'],
+  harmony_drone: ['harmony', 'melody', 'fresh'],
+  motif_hook: ['melody', 'gear', 'fresh'],
+  texture_layer: ['texture', 'gear', 'fresh'],
+  movement_modulation: ['movement', 'gear', 'fresh'],
+  arrangement_arc: ['arrangement', 'live', 'fresh'],
+  transitions: ['arrangement', 'live', 'fresh'],
+  mix_space: ['texture', 'gear', 'fresh'],
+  live_translation: ['live', 'gear', 'fresh'],
+  finish_review: ['finish', 'arrangement', 'fresh'],
+};
+
 const state = {
   bootstrap: null,
   ideas: null,
@@ -67,6 +103,9 @@ const state = {
   phaseFocus: {},
   screenIndex: 0,
   prompts: [],
+  promptMode: 'normal',
+  recentIdeaIds: [],
+  searchResults: [],
   traceIdea: null,
   utilityPanel: 'section',
 };
@@ -106,6 +145,10 @@ function escapeHtml(value = '') {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function ideaRef(idea = {}) {
+  return idea._indexKey || idea.id || '';
 }
 
 function toast(message) {
@@ -199,6 +242,37 @@ function phaseCompletion(screen) {
   if (!stageIds.length) return '';
   const done = stageIds.filter((stageId) => state.plan[stageId]).length;
   return `${done} / ${stageIds.length}`;
+}
+
+function promptModeLabel(mode = 'normal') {
+  return MODE_LABELS[mode] || MODE_LABELS.normal;
+}
+
+function anotherModeLabel(mode = 'fresh') {
+  if (mode === 'normal') return 'Another fit';
+  const label = promptModeLabel(mode);
+  return label.startsWith('More ') ? label.replace('More ', 'Another ') : label;
+}
+
+function stageRefreshModes(stageId) {
+  const rawModes = STAGE_REFRESH_MODES[stageId] || ['fresh', 'deeper'];
+  const modes = ['normal', ...rawModes.map((mode) => {
+    if (mode === 'raga' && activePitchPath() !== 'raga') return 'melody';
+    return mode;
+  })];
+  return modes.filter((mode, index, list) => list.indexOf(mode) === index).slice(0, 4);
+}
+
+function renderContextActions(stageId) {
+  return `
+    <div class="context-actions" aria-label="Idea refresh options">
+      ${stageRefreshModes(stageId).map((mode) => `
+        <button type="button" class="btn small ${state.promptMode === mode ? 'is-active' : ''}" data-refresh="${mode === 'normal' ? 'normal' : 'context'}" data-refresh-mode="${escapeHtml(mode)}">
+          ${escapeHtml(promptModeLabel(mode))}
+        </button>
+      `).join('')}
+    </div>
+  `;
 }
 
 function enrichedPlan() {
@@ -386,6 +460,9 @@ function renderTracePanel() {
       <p>${escapeHtml(item.sourceAuthor || '')}</p>
       ${item.friendly?.action ? `<p style="margin-top:10px"><strong>Shown as:</strong> ${escapeHtml(item.friendly.action)}</p>` : ''}
       <p style="margin-top:10px"><strong>Original source wording:</strong> ${escapeHtml(item.prompt)}</p>
+      ${item._sourceAlternates?.length ? `
+        <p style="margin-top:10px"><strong>Related source versions kept:</strong> ${escapeHtml(item._sourceAlternates.map((alt) => `Book ${alt.bookNumber} (${String(alt.stageBucket || '').replaceAll('_', ' ')})`).join(', '))}</p>
+      ` : ''}
       <div class="chips" style="margin-top:10px">
         ${(item.domainHints || []).slice(0, 5).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}
         ${(item.gearHints || []).slice(0, 4).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}
@@ -723,20 +800,32 @@ async function ensureIdeasLoaded() {
   }
 }
 
-async function refreshPrompts({ inspiration = false } = {}) {
+async function refreshPrompts({ inspiration = false, mode = null } = {}) {
   const screen = currentScreen();
   if (screen.type !== 'build') return;
   const ok = await ensureIdeasLoaded();
   if (!ok) return;
   const stageId = activeStageId(screen);
-  state.prompts = generateStagePrompts(state.ideas, state.profile, stageId, state.plan, { inspiration })
+  const promptMode = mode || (inspiration ? 'fresh' : 'normal');
+  state.promptMode = promptMode;
+  state.prompts = generateStagePrompts(state.ideas, state.profile, stageId, state.plan, {
+    inspiration,
+    mode: promptMode,
+    recentIds: state.recentIdeaIds,
+  })
     .slice(0, 3)
     .map((idea) => ({ ...idea, _stageId: stageId }));
+  state.recentIdeaIds = [
+    ...state.prompts.map((idea) => idea.id),
+    ...state.recentIdeaIds.filter((id) => !state.prompts.some((idea) => idea.id === id)),
+  ].slice(0, 80);
   renderBuild();
 }
 
 function renderPromptCard(idea, index) {
   const presentation = ideaPresentation(idea, idea._stageId || activeStageId());
+  const mode = idea._contextMode || state.promptMode || 'fresh';
+  const relatedCount = Number(idea._relatedIdeaCount || 0);
   return `
     <article class="prompt-card ${index === 0 ? 'featured' : ''}">
       <div class="prompt-topline">
@@ -752,9 +841,14 @@ function renderPromptCard(idea, index) {
       ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
       <div class="prompt-footer">
         <span>${escapeHtml(presentation.sourceLine)}</span>
-        ${idea._score ? `<span>match ${idea._score}</span>` : ''}
+        <span>${escapeHtml(promptModeLabel(mode))}</span>
+        ${relatedCount > 1 ? `<span>${relatedCount} related source versions kept</span>` : ''}
       </div>
-      <div class="prompt-actions"><button class="btn primary small" data-use="${escapeHtml(idea.id)}">Use this</button><button class="btn small" data-refresh="another">Another</button><button class="btn small" data-source="${escapeHtml(idea.id)}">Source</button></div>
+      <div class="prompt-actions">
+        <button class="btn primary small" data-use="${escapeHtml(ideaRef(idea))}">Use this</button>
+        <button class="btn small" data-refresh="context" data-refresh-mode="${escapeHtml(mode)}">${escapeHtml(anotherModeLabel(mode))}</button>
+        <button class="btn small" data-source="${escapeHtml(ideaRef(idea))}">Source</button>
+      </div>
     </article>
   `;
 }
@@ -781,7 +875,7 @@ function renderBuild() {
         <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
         ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
         <div class="chips" style="margin-top:10px">${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
-        <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(chosen.id)}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button></div>
+        <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(ideaRef(chosen))}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button></div>
         </div>
       </div>
     `;
@@ -791,11 +885,12 @@ function renderBuild() {
     els.wizardBody.innerHTML = `
       <div class="build-workspace">
         <div class="phase-focus">${focusTabs}</div>
+        ${renderContextActions(stageId)}
         <div class="info-card wide">
           <span class="mini-label">${escapeHtml(screen.label)}</span>
           <h3>${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</h3>
           <p>The app will show only three plain-language ideas for this focus. Switch focus above when you want a different part of the phase.</p>
-          <div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal">Show ideas</button></div>
+          <div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal" data-refresh-mode="normal">Show ideas</button></div>
         </div>
       </div>
     `;
@@ -804,6 +899,7 @@ function renderBuild() {
   els.wizardBody.innerHTML = `
     <div class="build-workspace">
       <div class="phase-focus">${focusTabs}</div>
+      ${renderContextActions(stageId)}
       <div class="prompt-scroll stack">${state.prompts.map(renderPromptCard).join('')}</div>
     </div>
   `;
@@ -859,6 +955,7 @@ function setProfileFromInput(input) {
 function stepTo(index) {
   state.screenIndex = Math.max(0, Math.min(index, SCREENS.length - 1));
   state.prompts = [];
+  state.promptMode = 'normal';
   renderAll();
   saveAppState();
   if (currentScreen().type === 'build' && state.ideas && !state.plan[activeStageId()]) refreshPrompts();
@@ -874,9 +971,20 @@ function back() {
 }
 
 function findVisibleIdea(id) {
-  const all = [...state.prompts, ...Object.values(state.plan)];
+  const all = [...state.prompts, ...Object.values(state.plan), ...state.searchResults];
   if (state.ideas) all.push(...state.ideas.filter((idea) => idea.id === id));
-  return all.find((idea) => idea.id === id) || null;
+  return all.find((idea) => ideaRef(idea) === id || idea.id === id) || null;
+}
+
+function showSourceForId(id) {
+  const sourceIdea = findVisibleIdea(id);
+  state.traceIdea = sourceIdea ? {
+    ...sourceIdea,
+    friendly: sourceIdea.friendly || ideaPresentation(sourceIdea, sourceIdea._stageId || sourceIdea.stageBucket || activeStageId()),
+  } : null;
+  renderTracePanel();
+  setUtilityPanel('trace', true);
+  saveAppState();
 }
 
 function startNewSong() {
@@ -885,6 +993,7 @@ function startNewSong() {
   state.plan = {};
   state.phaseFocus = {};
   state.prompts = [];
+  state.promptMode = 'normal';
   state.traceIdea = null;
   state.screenIndex = 1;
   renderAll();
@@ -912,6 +1021,7 @@ function openSavedSection(id) {
   state.plan = section.plan || {};
   state.phaseFocus = {};
   state.prompts = [];
+  state.promptMode = 'normal';
   state.traceIdea = null;
   state.screenIndex = 1;
   renderAll();
@@ -948,6 +1058,10 @@ function bindEvents() {
     if (panelButton) {
       setUtilityPanel(panelButton.dataset.openPanel, true);
       return;
+    }
+    const drawerSource = event.target.closest('[data-source]');
+    if (drawerSource && !els.wizardBody.contains(drawerSource)) {
+      showSourceForId(drawerSource.dataset.source);
     }
   });
 
@@ -988,6 +1102,7 @@ function bindEvents() {
     if (phaseFocus) {
       state.phaseFocus[currentScreen().id] = phaseFocus.dataset.phaseFocus;
       state.prompts = [];
+      state.promptMode = 'normal';
       renderAll();
       saveAppState();
       if (state.ideas && !state.plan[activeStageId()]) refreshPrompts();
@@ -1023,11 +1138,14 @@ function bindEvents() {
     }
 
     const refresh = event.target.closest('[data-refresh]');
-    if (refresh) return refreshPrompts({ inspiration: refresh.dataset.refresh !== 'normal' });
+    if (refresh) {
+      const mode = refresh.dataset.refreshMode || (refresh.dataset.refresh === 'normal' ? 'normal' : 'fresh');
+      return refreshPrompts({ inspiration: refresh.dataset.refresh !== 'normal', mode });
+    }
 
     const use = event.target.closest('[data-use]');
     if (use) {
-      const idea = state.prompts.find((item) => item.id === use.dataset.use);
+      const idea = state.prompts.find((item) => ideaRef(item) === use.dataset.use || item.id === use.dataset.use);
       if (!idea) return;
       const stageId = idea._stageId || activeStageId();
       const enrichedIdea = {
@@ -1044,13 +1162,7 @@ function bindEvents() {
 
     const source = event.target.closest('[data-source]');
     if (source) {
-      const sourceIdea = findVisibleIdea(source.dataset.source);
-      state.traceIdea = sourceIdea ? {
-        ...sourceIdea,
-        friendly: sourceIdea.friendly || ideaPresentation(sourceIdea, sourceIdea._stageId || activeStageId()),
-      } : null;
-      renderTracePanel();
-      saveAppState();
+      showSourceForId(source.dataset.source);
       return;
     }
 
@@ -1066,7 +1178,7 @@ function bindEvents() {
   els.backBtn.addEventListener('click', back);
   els.nextBtn.addEventListener('click', next);
   els.loadIdeasBtn.addEventListener('click', () => currentScreen().type === 'build' ? refreshPrompts() : ensureIdeasLoaded());
-  els.inspireBtn.addEventListener('click', () => refreshPrompts({ inspiration: true }));
+  els.inspireBtn.addEventListener('click', () => refreshPrompts({ inspiration: true, mode: 'fresh' }));
   els.saveBtn.addEventListener('click', saveCurrentSection);
   els.exportJsonBtn.addEventListener('pointerdown', prepareJsonExport);
   els.exportJsonBtn.addEventListener('focus', prepareJsonExport);
@@ -1077,7 +1189,9 @@ function bindEvents() {
   els.searchBtn.addEventListener('click', async () => {
     const ok = await ensureIdeasLoaded();
     if (!ok) return;
-    const results = searchIdeas(state.ideas, els.searchInput.value, {}).slice(0, 8);
+    const filters = currentScreen().type === 'build' ? { stage: activeStageId() } : {};
+    const results = searchIdeas(state.ideas, els.searchInput.value, filters).slice(0, 8);
+    state.searchResults = results;
     els.searchResults.innerHTML = results.length ? results.map((idea) => {
       const presentation = ideaPresentation(idea, idea.stageBucket || currentScreen().id);
       return `
@@ -1085,6 +1199,7 @@ function bindEvents() {
           <span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
           <p>${escapeHtml(presentation.action)}</p>
           <div class="chips" style="margin-top:8px">${presentation.tags.slice(0, 4).map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
+          <div class="prompt-actions" style="margin-top:10px"><button class="btn small" data-source="${escapeHtml(ideaRef(idea))}">Source</button></div>
         </div>
       `;
     }).join('') : `<div class="result-card muted-box">No results.</div>`;

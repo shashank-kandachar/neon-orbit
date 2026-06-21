@@ -132,6 +132,7 @@ p { color: var(--muted); line-height: 1.52; }
 .btn.primary { background: linear-gradient(120deg, var(--cyan), var(--violet)); color: #06101b; border: 0; font-weight: 800; }
 .btn.small { padding: 8px 11px; font-size: 0.86rem; }
 .btn.danger { border-color: rgba(255,119,119,0.35); background: rgba(255,119,119,0.12); }
+.btn.is-active { border-color: rgba(202,255,130,0.36); background: rgba(202,255,130,0.10); color: var(--text); }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 .status-card {
@@ -884,7 +885,7 @@ button.entry-card {
 .build-workspace {
   min-height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -913,6 +914,18 @@ button.entry-card {
 
 .focus-chip.is-done {
   border-color: rgba(202,255,130,0.28);
+}
+
+.context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.context-actions .btn {
+  min-height: 34px;
+  white-space: nowrap;
 }
 
 .prompt-scroll {
