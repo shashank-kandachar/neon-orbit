@@ -31,6 +31,10 @@ function normalise(value) {
   return (value || '').toString().trim().toLowerCase();
 }
 
+function hasPromptText(idea) {
+  return typeof idea.prompt === 'string' && idea.prompt.trim().length > 0;
+}
+
 function includesAny(haystack, needles) {
   return needles.some((needle) => haystack.includes(needle));
 }
@@ -151,6 +155,7 @@ export function generateStagePrompts(ideas, profile, stageId, plan = {}, options
   const inspiration = options.inspiration || false;
   const selectedIds = new Set(Object.values(plan).filter(Boolean).map((entry) => entry.id));
   const candidates = ideas
+    .filter(hasPromptText)
     .map((idea) => ({ ...idea, _score: scoreIdea(idea, profile, stageId, { inspiration }) }))
     .filter((idea) => !selectedIds.has(idea.id))
     .filter((idea) => idea._score >= (inspiration ? 18 : 24));
@@ -168,7 +173,7 @@ export function generateStagePrompts(ideas, profile, stageId, plan = {}, options
   }
 
   if (!picked.length) {
-    return ideas.slice(0, 6);
+    return ideas.filter(hasPromptText).slice(0, 6);
   }
   return picked;
 }

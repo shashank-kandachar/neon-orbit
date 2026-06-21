@@ -1,8 +1,8 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js';
-import { loadBootstrapData, loadIdeas } from './data-loader.js';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js';
-import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.5';
+import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.5';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.5';
+import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js?v=keyfirst3.5';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.5';
 
 const SETUP_SCREENS = [
   { id: 'start', type: 'start', label: 'Start', blurb: 'A calm start before the app serves prompts.' },
@@ -118,6 +118,11 @@ function payload() {
     summary: buildSectionSummary(state.profile, state.plan),
     plan: state.plan,
   };
+}
+
+function refreshExportLinks() {
+  exportPlanMarkdown(payload(), STAGES, els.exportMdBtn);
+  exportPlanJson(payload(), els.exportJsonBtn);
 }
 
 function renderStatus() {
@@ -388,6 +393,7 @@ function renderAll() {
   renderSectionSummary();
   renderPlanSummary();
   renderTracePanel();
+  refreshExportLinks();
 }
 
 function setProfileFromInput(input) {
@@ -404,6 +410,7 @@ function setProfileFromInput(input) {
     state.profile[name] = input.value;
   }
   renderSectionSummary();
+  refreshExportLinks();
   saveAppState();
 }
 
@@ -431,6 +438,9 @@ function findVisibleIdea(id) {
 }
 
 function bindEvents() {
+  const prepareMarkdownExport = (event) => exportPlanMarkdown(payload(), STAGES, event.currentTarget);
+  const prepareJsonExport = (event) => exportPlanJson(payload(), event.currentTarget);
+
   els.stepStrip.addEventListener('click', (event) => {
     const button = event.target.closest('[data-step]');
     if (button) stepTo(Number(button.dataset.step));
@@ -450,6 +460,17 @@ function bindEvents() {
   });
 
   els.wizardBody.addEventListener('click', (event) => {
+    const keyRoot = event.target.closest('[data-key-root]');
+    if (keyRoot) {
+      state.profile.keyRoot = keyRoot.dataset.keyRoot;
+      renderBody();
+      renderSectionSummary();
+      renderStepStrip();
+      refreshExportLinks();
+      saveAppState();
+      return;
+    }
+
     const refresh = event.target.closest('[data-refresh]');
     if (refresh) return refreshPrompts();
 
@@ -487,8 +508,12 @@ function bindEvents() {
   els.loadIdeasBtn.addEventListener('click', () => currentScreen().type === 'build' ? refreshPrompts() : ensureIdeasLoaded());
   els.inspireBtn.addEventListener('click', () => refreshPrompts({ inspiration: true }));
   els.saveBtn.addEventListener('click', () => { savePlanSnapshot(payload()); toast('Saved locally'); });
-  els.exportJsonBtn.addEventListener('click', () => exportPlanJson(payload()));
-  els.exportMdBtn.addEventListener('click', () => exportPlanMarkdown(payload(), STAGES));
+  els.exportJsonBtn.addEventListener('pointerdown', prepareJsonExport);
+  els.exportJsonBtn.addEventListener('focus', prepareJsonExport);
+  els.exportJsonBtn.addEventListener('click', prepareJsonExport);
+  els.exportMdBtn.addEventListener('pointerdown', prepareMarkdownExport);
+  els.exportMdBtn.addEventListener('focus', prepareMarkdownExport);
+  els.exportMdBtn.addEventListener('click', prepareMarkdownExport);
   els.searchBtn.addEventListener('click', async () => {
     const ok = await ensureIdeasLoaded();
     if (!ok) return;

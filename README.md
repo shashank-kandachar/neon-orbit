@@ -53,3 +53,12 @@ The pitch screen now follows the requested reference-style flow:
 3. The app displays the combined key world, for example `D Dorian` or `A Bhairavi`.
 
 The rest of the wizard remains clean and step-by-step.
+
+
+## Codex handoff
+
+This master package includes:
+
+- `AGENTS.md` — repository-level guidance for Codex
+- `CODEX_HANDOFF_PROMPT.md` — paste this into Codex for the first task
+- `GITHUB_CODEX_SETUP.md` — GitHub and Codex setup instructions

@@ -2,9 +2,9 @@
 <html lang="en-GB">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Neon Orbit — Key-first Section Wizard</title>
-  <link rel="stylesheet" href="./styles/app.css?v=keyfirst3" />
+  <link rel="stylesheet" href="./styles/app.css?v=keyfirst3.5" />
 </head>
 <body>
   <div class="page-bg"></div>
@@ -19,8 +19,8 @@
       <div class="hero-actions">
         <button class="btn secondary" id="loadIdeasBtn">Load idea pool</button>
         <button class="btn secondary" id="saveBtn">Save</button>
-        <button class="btn secondary" id="exportMdBtn">Export MD</button>
-        <button class="btn secondary" id="exportJsonBtn">Export JSON</button>
+        <a class="btn secondary" id="exportMdBtn" href="#" role="button">Export MD</a>
+        <a class="btn secondary" id="exportJsonBtn" href="#" role="button">Export JSON</a>
       </div>
     </header>
 
@@ -80,6 +80,6 @@
 
   <div class="toast hidden" id="toast"></div>
 
-  <script type="module" src="./src/main.js?v=clean2"></script>
+  <script type="module" src="./src/main.js?v=keyfirst3.5"></script>
 </body>
 </html>
