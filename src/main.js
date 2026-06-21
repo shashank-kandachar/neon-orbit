@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.26';
-import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.26';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.26';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.26';
-import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.26';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot } from './storage.js?v=keyfirst3.26';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.26';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.30';
+import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.30';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.30';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.30';
+import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.30';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.30';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.30';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -44,6 +44,15 @@ const BUILD_PHASES = [
 
 const SCREENS = [...SETUP_SCREENS, ...BUILD_PHASES];
 const STAGE_BY_ID = Object.fromEntries(STAGES.map((stage) => [stage.id, stage]));
+
+const ARRANGEMENT_TEMPLATE = [
+  { id: 'intro', label: 'Intro', cue: 'Open the world and establish the first colour.', accepts: ['intro'] },
+  { id: 'main_groove', label: 'Main groove', cue: 'State the body of the track clearly.', accepts: ['main groove', 'verse-like section', 'live jam section'] },
+  { id: 'breakdown', label: 'Breakdown', cue: 'Create space, contrast or a lower-energy window.', accepts: ['breakdown', 'interlude'] },
+  { id: 'build', label: 'Build', cue: 'Increase pressure without losing the pulse.', accepts: ['build', 'transition', 'bridge'] },
+  { id: 'peak', label: 'Drop / peak', cue: 'Let the strongest version arrive.', accepts: ['drop / peak'] },
+  { id: 'outro', label: 'Outro', cue: 'Release the energy and leave a trace.', accepts: ['outro'] },
+];
 
 const GROOVE_GUIDANCE = {
   'Straight 4/4': 'Put the kick or main pulse in the body first. Let guitar and synth answer around it instead of filling every gap.',
@@ -94,10 +103,97 @@ const STAGE_REFRESH_MODES = {
   finish_review: ['finish', 'arrangement', 'fresh'],
 };
 
+const STAGE_LOAD_NEIGHBOURS = {
+  section_identity: ['section_role'],
+  pitch_material: ['harmony_drone', 'motif_hook'],
+  tempo_groove: ['rhythmic_foundation', 'bass_pulse'],
+  section_role: ['section_identity', 'arrangement_arc'],
+  rhythmic_foundation: ['tempo_groove', 'bass_pulse'],
+  bass_pulse: ['rhythmic_foundation', 'harmony_drone'],
+  harmony_drone: ['pitch_material', 'motif_hook'],
+  motif_hook: ['pitch_material', 'harmony_drone'],
+  texture_layer: ['movement_modulation', 'mix_space'],
+  movement_modulation: ['texture_layer', 'arrangement_arc'],
+  arrangement_arc: ['section_role', 'transitions'],
+  transitions: ['arrangement_arc', 'live_translation'],
+  mix_space: ['texture_layer', 'live_translation'],
+  live_translation: ['transitions', 'mix_space'],
+  finish_review: ['live_translation', 'mix_space'],
+};
+
+const STAGE_GUIDANCE = {
+  section_identity: {
+    decide: 'Name the emotional job before writing more material.',
+    listen: 'The section should have one clear promise: warmth, tension, release, ritual, lift or stillness.',
+  },
+  pitch_material: {
+    decide: 'Choose the few notes that will carry the section.',
+    listen: 'The home note should feel obvious before the line becomes clever.',
+  },
+  tempo_groove: {
+    decide: 'Set the body-feel of the pulse.',
+    listen: 'The groove should make you nod before the arrangement gets busy.',
+  },
+  section_role: {
+    decide: 'Give this section a practical job in the track.',
+    listen: 'It should clearly introduce, deepen, lift, release, transition or close the journey.',
+  },
+  rhythmic_foundation: {
+    decide: 'Build the rhythmic floor first.',
+    listen: 'Kick, percussion, muted guitar or field sound should agree on where the weight lives.',
+  },
+  bass_pulse: {
+    decide: 'Make the low end simple enough to trust.',
+    listen: 'The bass should hold the body while leaving room for guitar and texture.',
+  },
+  harmony_drone: {
+    decide: 'Set the home, drone or chord colour.',
+    listen: 'The sustained layer should centre the section without covering the hook.',
+  },
+  motif_hook: {
+    decide: 'Find one small phrase worth repeating.',
+    listen: 'You should be able to sing, play or remember it after hearing it twice.',
+  },
+  texture_layer: {
+    decide: 'Add air, grit, place or shimmer.',
+    listen: 'The texture should make the section more alive without stealing the front of the mix.',
+  },
+  movement_modulation: {
+    decide: 'Move one sound over time.',
+    listen: 'A single filter, delay, pan, drive or pedal movement should create evolution.',
+  },
+  arrangement_arc: {
+    decide: 'Shape what changes across the bars.',
+    listen: 'The section should travel somewhere without needing too many new parts.',
+  },
+  transitions: {
+    decide: 'Make the entrance or exit feel intentional.',
+    listen: 'The next section should arrive because of a musical cue, not because the loop stopped.',
+  },
+  mix_space: {
+    decide: 'Clear space for the important parts.',
+    listen: 'The main pulse, low end and hook should be easy to follow at low volume.',
+  },
+  live_translation: {
+    decide: 'Choose what is played, triggered, automated or left alone live.',
+    listen: 'The section should have one obvious performance gesture and one reliable anchor.',
+  },
+  finish_review: {
+    decide: 'Keep the useful version and stop polishing the wrong thing.',
+    listen: 'The saved plan should tell you exactly what to record, rehearse or arrange next.',
+  },
+};
+
 const state = {
   bootstrap: null,
   ideas: null,
+  ideasPromise: null,
+  ideasPromiseKey: '',
+  ideasLoading: false,
+  loadedStageIds: new Set(),
+  allIdeasLoaded: false,
   song: null,
+  currentSectionId: null,
   profile: { ...DEFAULT_PROFILE },
   plan: {},
   phaseFocus: {},
@@ -105,6 +201,7 @@ const state = {
   prompts: [],
   promptMode: 'normal',
   recentIdeaIds: [],
+  ideaFeedback: {},
   searchResults: [],
   traceIdea: null,
   utilityPanel: 'section',
@@ -130,10 +227,13 @@ const els = {
   utilityPanelTitle: $('utilityPanelTitle'),
   panelCloseBtn: $('panelCloseBtn'),
   sectionSummary: $('sectionSummary'),
+  trackPanel: $('trackPanel'),
   planSummary: $('planSummary'),
   tracePanel: $('tracePanel'),
   searchInput: $('searchInput'),
   searchBtn: $('searchBtn'),
+  contextIdeasBtn: $('contextIdeasBtn'),
+  randomSearchBtn: $('randomSearchBtn'),
   searchResults: $('searchResults'),
   toast: $('toast'),
 };
@@ -151,6 +251,29 @@ function ideaRef(idea = {}) {
   return idea._indexKey || idea.id || '';
 }
 
+function feedbackForIdea(idea = {}) {
+  return state.ideaFeedback[ideaRef(idea)] || state.ideaFeedback[idea.id] || {};
+}
+
+function updateIdeaFeedback(ideaOrRef, patch = {}) {
+  const ref = typeof ideaOrRef === 'string' ? ideaOrRef : ideaRef(ideaOrRef);
+  if (!ref) return;
+  const previous = state.ideaFeedback[ref] || {};
+  const next = { ...previous, ...patch, updatedAt: new Date().toISOString() };
+  if (patch.rejected) next.pinned = false;
+  if (patch.pinned) next.rejected = false;
+  state.ideaFeedback = { ...state.ideaFeedback, [ref]: next };
+  saveIdeaFeedback(state.ideaFeedback);
+}
+
+function markIdeaUsed(idea) {
+  const current = feedbackForIdea(idea);
+  updateIdeaFeedback(idea, {
+    usedCount: Number(current.usedCount || 0) + 1,
+    usedAt: new Date().toISOString(),
+  });
+}
+
 function toast(message) {
   els.toast.textContent = message;
   els.toast.classList.remove('hidden');
@@ -162,18 +285,38 @@ function currentScreen() {
   return SCREENS[state.screenIndex] || SCREENS[0];
 }
 
-function createDraftSong() {
+function defaultArrangement() {
+  return ARRANGEMENT_TEMPLATE.map((slot) => ({ id: slot.id, sectionId: '' }));
+}
+
+function normaliseSong(song = null) {
+  const base = song || {};
+  const existingSlots = new Map((base.arrangement || []).map((slot) => [slot.id, slot]));
   return {
+    id: base.id || `song_${Date.now()}`,
+    title: base.title || 'New Song',
+    sections: Array.isArray(base.sections) ? base.sections : [],
+    arrangement: ARRANGEMENT_TEMPLATE.map((slot) => ({
+      id: slot.id,
+      sectionId: existingSlots.get(slot.id)?.sectionId || '',
+    })),
+    updatedAt: base.updatedAt || new Date().toISOString(),
+  };
+}
+
+function createDraftSong() {
+  return normaliseSong({
     id: `song_${Date.now()}`,
     title: 'New Song',
     sections: [],
     updatedAt: new Date().toISOString(),
-  };
+  });
 }
 
 function saveAppState() {
   saveState({
     song: state.song,
+    currentSectionId: state.currentSectionId,
     profile: state.profile,
     plan: state.plan,
     phaseFocus: state.phaseFocus,
@@ -183,12 +326,14 @@ function saveAppState() {
 }
 
 function hydrateState() {
+  state.ideaFeedback = loadIdeaFeedback();
   const stored = loadState();
   if (!stored) {
     state.song = createDraftSong();
     return;
   }
-  state.song = stored.song || createDraftSong();
+  state.song = normaliseSong(stored.song || createDraftSong());
+  state.currentSectionId = stored.currentSectionId || null;
   state.profile = { ...DEFAULT_PROFILE, ...(stored.profile || {}) };
   state.profile.noteSpelling = state.profile.noteSpelling || 'sharps';
   state.profile.keyRoot = state.profile.keyRoot || DEFAULT_PROFILE.keyRoot;
@@ -263,6 +408,18 @@ function stageRefreshModes(stageId) {
   return modes.filter((mode, index, list) => list.indexOf(mode) === index).slice(0, 4);
 }
 
+function uniqueList(values = []) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function stageContextIds(stageId, mode = 'normal') {
+  const neighbours = STAGE_LOAD_NEIGHBOURS[stageId] || [];
+  const ids = mode === 'deeper'
+    ? [stageId, ...neighbours, ...(currentScreen().stageIds || [])]
+    : [stageId, ...neighbours];
+  return uniqueList(ids);
+}
+
 function renderContextActions(stageId) {
   return `
     <div class="context-actions" aria-label="Idea refresh options">
@@ -272,6 +429,40 @@ function renderContextActions(stageId) {
         </button>
       `).join('')}
     </div>
+  `;
+}
+
+function renderStageGuide(screen, stageId) {
+  const guidance = STAGE_GUIDANCE[stageId] || {
+    decide: 'Make one practical composition decision for this focus.',
+    listen: 'Keep the move that makes the section easier to hear, play or arrange.',
+  };
+  const stage = STAGE_BY_ID[stageId] || activeStage(screen);
+  const pitchContext = getPitchContext(state.profile, selectedRagaCard());
+  const noteLine = pitchContext?.notes?.length
+    ? pitchContext.notes.slice(0, 7).join(', ')
+    : `${state.profile.keyRoot || 'D'} as home`;
+  return `
+    <section class="stage-guide">
+      <div class="stage-guide-main">
+        <span class="mini-label">Now composing</span>
+        <h3>${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</h3>
+        <p>${escapeHtml(guidance.decide)}</p>
+      </div>
+      <div class="stage-guide-context">
+        <span>${escapeHtml(currentKeyLabel())}</span>
+        <strong>${escapeHtml(noteLine)}</strong>
+        <p>${escapeHtml(`${state.profile.tempo} BPM · ${state.profile.groove} · ${state.profile.sectionType}`)}</p>
+      </div>
+      <div class="stage-guide-listen">
+        <span>Listen for</span>
+        <p>${escapeHtml(guidance.listen)}</p>
+      </div>
+      <div class="stage-guide-actions">
+        <button type="button" class="btn small" data-refresh="context" data-refresh-mode="fresh">Randomise</button>
+        <button type="button" class="btn small" data-open-panel="search">Dig deeper</button>
+      </div>
+    </section>
   `;
 }
 
@@ -310,9 +501,14 @@ function enrichedPlan() {
 
 function payload() {
   const plan = enrichedPlan();
+  const id = state.currentSectionId || `section_${Date.now()}`;
+  const createdAt = state.currentSectionId
+    ? (savedSections().find((section) => section.id === state.currentSectionId)?.createdAt || new Date().toISOString())
+    : new Date().toISOString();
   return {
-    id: `section_${Date.now()}`,
-    createdAt: new Date().toISOString(),
+    id,
+    createdAt,
+    updatedAt: new Date().toISOString(),
     song: state.song,
     profile: state.profile,
     summary: buildSectionSummary(state.profile, plan),
@@ -392,11 +588,79 @@ function savedSections() {
   return loadSavedPlans();
 }
 
+function sectionLabel(section = {}) {
+  const profile = section.profile || {};
+  const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
+  return [profile.sectionType || section.title || 'Section', key, profile.groove].filter(Boolean).join(' · ');
+}
+
+function arrangementSections() {
+  const map = new Map();
+  for (const section of savedSections()) map.set(section.id, section);
+  for (const section of state.song?.sections || []) {
+    map.set(section.id, { ...(map.get(section.id) || {}), ...section });
+  }
+  return [...map.values()];
+}
+
+function sectionForArrangement(sectionId) {
+  return arrangementSections().find((section) => section.id === sectionId) || null;
+}
+
+function slotForSection(section = {}) {
+  const sectionType = String(section.profile?.sectionType || section.title || '').toLowerCase();
+  return ARRANGEMENT_TEMPLATE.find((slot) => slot.accepts.some((accepted) => sectionType.includes(accepted))) || null;
+}
+
+function autoPlaceSectionInSong(song, section) {
+  const nextSong = normaliseSong(song);
+  const slot = slotForSection(section);
+  if (!slot) return nextSong;
+  const target = nextSong.arrangement.find((item) => item.id === slot.id);
+  if (target && !target.sectionId) target.sectionId = section.id;
+  return nextSong;
+}
+
+function autoArrangeSong() {
+  const sections = arrangementSections();
+  const used = new Set();
+  const current = new Map((state.song?.arrangement || []).map((slot) => [slot.id, slot.sectionId]));
+  const arrangement = ARRANGEMENT_TEMPLATE.map((slot) => {
+    const existing = current.get(slot.id);
+    if (existing && !used.has(existing)) {
+      used.add(existing);
+      return { id: slot.id, sectionId: existing };
+    }
+    const match = sections.find((section) => !used.has(section.id) && slot.accepts.some((accepted) => String(section.profile?.sectionType || section.title || '').toLowerCase().includes(accepted)));
+    if (match) {
+      used.add(match.id);
+      return { id: slot.id, sectionId: match.id };
+    }
+    return { id: slot.id, sectionId: '' };
+  });
+  state.song = normaliseSong({ ...(state.song || createDraftSong()), arrangement, updatedAt: new Date().toISOString() });
+  saveAppState();
+  renderAll();
+  toast('Track arranged');
+}
+
+function setArrangementSlot(slotId, sectionId = '') {
+  const song = normaliseSong(state.song || createDraftSong());
+  state.song = {
+    ...song,
+    arrangement: song.arrangement.map((slot) => slot.id === slotId ? { ...slot, sectionId } : slot),
+    updatedAt: new Date().toISOString(),
+  };
+  saveAppState();
+  renderAll();
+}
+
 function setUtilityPanel(panel = 'section', open = true) {
   if (!els.utilityPanel) return;
   state.utilityPanel = panel;
   const labels = {
     section: 'Current section',
+    track: 'Track arrangement',
     plan: 'Chosen prompts',
     trace: 'Source trace',
     search: 'Find ideas',
@@ -444,6 +708,7 @@ function renderSectionSummary() {
   const p = state.profile;
   const rows = [
     ['Song', state.song?.title || 'New Song'],
+    ['Song sections', String(state.song?.sections?.length || 0)],
     ['Key', currentKeyLabel()],
     ['Tempo', p.tempo ? `${p.tempo} BPM` : '—'],
     ['Groove', p.groove],
@@ -454,6 +719,57 @@ function renderSectionSummary() {
   els.sectionSummary.innerHTML = rows.map(([label, value]) => `
     <div class="mini-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || '—')}</strong></div>
   `).join('');
+}
+
+function arrangementOptions(selectedId = '') {
+  const sections = arrangementSections();
+  const options = [`<option value="">No section assigned</option>`];
+  sections.forEach((section) => {
+    options.push(`<option value="${escapeHtml(section.id)}" ${section.id === selectedId ? 'selected' : ''}>${escapeHtml(sectionLabel(section))}</option>`);
+  });
+  return options.join('');
+}
+
+function renderTrackArrangement({ compact = false } = {}) {
+  const song = normaliseSong(state.song || createDraftSong());
+  const arrangement = new Map(song.arrangement.map((slot) => [slot.id, slot.sectionId]));
+  return `
+    <section class="track-arrangement ${compact ? 'compact' : ''}">
+      <div class="track-arrangement-head">
+        <div>
+          <span class="mini-label">Track map</span>
+          <h3>${escapeHtml(song.title || 'New Song')}</h3>
+        </div>
+        <button type="button" class="btn small" data-auto-arrange>Auto arrange</button>
+      </div>
+      <div class="arrangement-slots">
+        ${ARRANGEMENT_TEMPLATE.map((slot, index) => {
+          const sectionId = arrangement.get(slot.id) || '';
+          const section = sectionForArrangement(sectionId);
+          return `
+            <article class="arrangement-slot ${section ? 'is-filled' : ''}">
+              <div class="slot-number">${index + 1}</div>
+              <div class="slot-main">
+                <span>${escapeHtml(slot.label)}</span>
+                <strong>${escapeHtml(section ? (section.summary?.title || section.title || sectionLabel(section)) : slot.cue)}</strong>
+                ${section ? `<em>${escapeHtml(sectionLabel(section))}</em>` : `<em>${escapeHtml(slot.cue)}</em>`}
+                <select data-arrangement-slot="${escapeHtml(slot.id)}">${arrangementOptions(sectionId)}</select>
+              </div>
+              <div class="slot-actions">
+                ${section ? `<button type="button" class="btn small" data-open-arrangement-section="${escapeHtml(section.id)}">Open</button>` : ''}
+                ${section ? `<button type="button" class="btn small" data-clear-arrangement-slot="${escapeHtml(slot.id)}">Clear</button>` : ''}
+              </div>
+            </article>
+          `;
+        }).join('')}
+      </div>
+    </section>
+  `;
+}
+
+function renderTrackPanel() {
+  if (!els.trackPanel) return;
+  els.trackPanel.innerHTML = renderTrackArrangement({ compact: true });
 }
 
 function renderPlanSummary() {
@@ -495,7 +811,9 @@ function renderTracePanel() {
 }
 
 function renderSongEntry() {
-  const sections = savedSections().slice(0, 10);
+  const sections = savedSections().slice(0, 12);
+  const savedById = new Map(sections.map((section) => [section.id, section]));
+  const songSections = (state.song?.sections || []).slice(0, 12);
   els.wizardBody.innerHTML = `
     <div class="song-entry">
       <button type="button" class="entry-card primary-entry" data-new-song>
@@ -503,6 +821,31 @@ function renderSongEntry() {
         <strong>New Song</strong>
         <em>Begin with one section, then save it into the local song workspace.</em>
       </button>
+
+      <div class="entry-card current-song-entry">
+        <span class="mini-label">Current song</span>
+        <label class="song-title-field">
+          <span>Song title</span>
+          <input data-song-title type="text" value="${escapeHtml(state.song?.title || 'New Song')}" />
+        </label>
+        <button type="button" class="btn primary small" data-new-section>New section in this song</button>
+        ${renderTrackArrangement({ compact: true })}
+        <span class="mini-label section-list-label">Song sections</span>
+        <div class="section-list">
+          ${songSections.length ? songSections.map((section) => {
+            const saved = savedById.get(section.id);
+            const profile = saved?.profile || section.profile || {};
+            const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
+            return `
+              <button type="button" class="section-row ${section.id === state.currentSectionId ? 'is-current' : ''}" data-open-section="${escapeHtml(section.id)}">
+                <span>${escapeHtml(section.id === state.currentSectionId ? 'Current section' : 'Song section')}</span>
+                <strong>${escapeHtml(section.title || saved?.summary?.title || profile.sectionType || 'Saved section')}</strong>
+                <em>${escapeHtml([profile.sectionType, key, profile.groove].filter(Boolean).join(' · ') || 'Saved locally')}</em>
+              </button>
+            `;
+          }).join('') : `<div class="mini-card muted-box">No sections in this song yet. Save the first section when it has a useful shape.</div>`}
+        </div>
+      </div>
 
       <div class="entry-card existing-entry">
         <span class="mini-label">Local workspace</span>
@@ -513,6 +856,7 @@ function renderSongEntry() {
             <button type="button" class="section-row" data-open-section="${escapeHtml(section.id)}">
               <span>${escapeHtml(section.summary?.title || section.profile?.sectionType || 'Saved section')}</span>
               <strong>${escapeHtml(section.profile ? `${section.profile.sectionType || 'Section'} · ${section.profile.keyRoot || ''} ${section.profile.selectedRaga || section.profile.pitchWorld || ''}` : 'Saved section')}</strong>
+              <em>${escapeHtml(section.updatedAt ? `Updated ${new Date(section.updatedAt).toLocaleDateString('en-GB')}` : 'Saved locally')}</em>
             </button>
           `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`}
         </div>
@@ -808,33 +1152,71 @@ function renderSource() {
   `;
 }
 
-async function ensureIdeasLoaded() {
-  if (state.ideas) return true;
-  els.loadIdeasBtn.textContent = 'Loading…';
-  try {
-    state.ideas = await loadIdeas();
-    els.loadIdeasBtn.textContent = 'Idea pool loaded';
-    toast('Idea pool loaded');
-    return true;
-  } catch (error) {
-    console.error(error);
-    toast('Could not load ideas. Use GitHub Pages or a local server.');
-    return false;
+function rememberIdeas(ideas = []) {
+  const map = new Map((state.ideas || []).map((idea) => [ideaRef(idea), idea]));
+  for (const idea of ideas) {
+    map.set(ideaRef(idea), idea);
   }
+  state.ideas = [...map.values()];
+}
+
+function ideasForStages(stageIds = []) {
+  const ids = new Set(stageIds);
+  return (state.ideas || []).filter((idea) => ids.has(idea.stageBucket));
+}
+
+async function loadIdeaContext(stageIds = null) {
+  const ids = stageIds ? uniqueList(stageIds) : [];
+  const isFullPoolRequest = !ids.length;
+  if (isFullPoolRequest && state.allIdeasLoaded) return state.ideas || [];
+  if (!isFullPoolRequest && ids.every((id) => state.loadedStageIds.has(id))) return ideasForStages(ids);
+
+  const promiseKey = isFullPoolRequest ? 'all' : ids.slice().sort().join('|');
+  if (state.ideasPromise && state.ideasPromiseKey === promiseKey) return state.ideasPromise;
+  els.loadIdeasBtn.textContent = isFullPoolRequest ? 'Loading pool…' : 'Loading focus…';
+  state.ideasLoading = true;
+  if (currentScreen().type === 'build') renderBuild();
+  state.ideasPromise = (async () => {
+    try {
+      const loaded = isFullPoolRequest ? await loadIdeas() : await loadIdeasForStages(ids);
+      rememberIdeas(loaded);
+      if (isFullPoolRequest) state.allIdeasLoaded = true;
+      ids.forEach((id) => state.loadedStageIds.add(id));
+      els.loadIdeasBtn.textContent = isFullPoolRequest ? 'Idea pool loaded' : 'Focus ideas loaded';
+      toast(isFullPoolRequest ? 'Idea pool loaded' : 'Focus ideas loaded');
+      return isFullPoolRequest ? (state.ideas || []) : ideasForStages(ids);
+    } catch (error) {
+      console.error(error);
+      toast('Could not load ideas. Use GitHub Pages or a local server.');
+      return null;
+    } finally {
+      state.ideasLoading = false;
+      state.ideasPromise = null;
+      state.ideasPromiseKey = '';
+    }
+  })();
+  state.ideasPromiseKey = promiseKey;
+  return state.ideasPromise;
+}
+
+async function ensureIdeasLoaded(stageIds = null) {
+  return Boolean(await loadIdeaContext(stageIds));
 }
 
 async function refreshPrompts({ inspiration = false, mode = null } = {}) {
   const screen = currentScreen();
   if (screen.type !== 'build') return;
-  const ok = await ensureIdeasLoaded();
-  if (!ok) return;
   const stageId = activeStageId(screen);
   const promptMode = mode || (inspiration ? 'fresh' : 'normal');
+  const contextStageIds = stageContextIds(stageId, promptMode);
+  const contextIdeas = await loadIdeaContext(contextStageIds);
+  if (!contextIdeas?.length) return;
   state.promptMode = promptMode;
-  state.prompts = generateStagePrompts(state.ideas, state.profile, stageId, state.plan, {
+  state.prompts = generateStagePrompts(contextIdeas, state.profile, stageId, state.plan, {
     inspiration,
     mode: promptMode,
     recentIds: state.recentIdeaIds,
+    feedback: state.ideaFeedback,
   })
     .slice(0, 3)
     .map((idea) => ({ ...idea, _stageId: stageId }));
@@ -849,11 +1231,14 @@ function renderPromptCard(idea, index) {
   const presentation = ideaPresentation(idea, idea._stageId || activeStageId());
   const mode = idea._contextMode || state.promptMode || 'fresh';
   const relatedCount = Number(idea._relatedIdeaCount || 0);
+  const feedback = feedbackForIdea(idea);
   return `
     <article class="prompt-card ${index === 0 ? 'featured' : ''}">
       <div class="prompt-topline">
         <span class="mini-label">${escapeHtml(presentation.title)}</span>
         <div class="chips">
+          ${feedback.pinned ? `<span class="chip idea-tag">pinned</span>` : ''}
+          ${feedback.usedAt ? `<span class="chip">used before</span>` : ''}
           ${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}
         </div>
       </div>
@@ -874,6 +1259,8 @@ function renderPromptCard(idea, index) {
       <div class="prompt-actions">
         <button class="btn primary small" data-use="${escapeHtml(ideaRef(idea))}">Use this</button>
         <button class="btn small" data-refresh="context" data-refresh-mode="${escapeHtml(mode)}">${escapeHtml(anotherModeLabel(mode))}</button>
+        <button class="btn small ${feedback.pinned ? 'is-active' : ''}" data-feedback="pin" data-feedback-idea="${escapeHtml(ideaRef(idea))}">${feedback.pinned ? 'Pinned' : 'Pin'}</button>
+        <button class="btn small" data-feedback="reject" data-feedback-idea="${escapeHtml(ideaRef(idea))}">Reject</button>
         <button class="btn small" data-source="${escapeHtml(ideaRef(idea))}">Source</button>
       </div>
     </article>
@@ -885,6 +1272,7 @@ function renderBuild() {
   const stageId = activeStageId(screen);
   const stage = activeStage(screen);
   const chosen = state.plan[stageId];
+  const stageGuide = renderStageGuide(screen, stageId);
   const focusTabs = (screen.stageIds || []).map((id) => {
     const item = STAGE_BY_ID[id];
     const label = item?.label.replace(/^\d+\.\s*/, '') || id.replaceAll('_', ' ');
@@ -892,13 +1280,19 @@ function renderBuild() {
   }).join('');
   if (chosen) {
     const presentation = ideaPresentation(chosen, stageId);
+    const feedback = feedbackForIdea(chosen);
     els.wizardBody.innerHTML = `
       <div class="build-workspace">
         <div class="phase-focus">${focusTabs}</div>
+        ${stageGuide}
         <div class="info-card wide chosen-idea prompt-card">
           <span class="mini-label">Chosen for ${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</span>
           <h3>${escapeHtml(presentation.title)}</h3>
-          <div class="chips" style="margin-top:10px">${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
+          <div class="chips" style="margin-top:10px">
+            ${feedback.pinned ? `<span class="chip idea-tag">pinned</span>` : ''}
+            ${feedback.usedAt ? `<span class="chip">used before</span>` : ''}
+            ${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}
+          </div>
           <div class="idea-card-grid">
             <div class="idea-main">
               <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
@@ -906,7 +1300,11 @@ function renderBuild() {
             </div>
             ${renderIdeaCompanion(presentation)}
           </div>
-          <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(ideaRef(chosen))}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button></div>
+          <div class="prompt-actions" style="margin-top:14px">
+            <button class="btn small" data-source="${escapeHtml(ideaRef(chosen))}">Source</button>
+            <button class="btn small ${feedback.pinned ? 'is-active' : ''}" data-feedback="pin" data-feedback-idea="${escapeHtml(ideaRef(chosen))}">${feedback.pinned ? 'Pinned' : 'Pin'}</button>
+            <button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button>
+          </div>
         </div>
       </div>
     `;
@@ -916,12 +1314,13 @@ function renderBuild() {
     els.wizardBody.innerHTML = `
       <div class="build-workspace">
         <div class="phase-focus">${focusTabs}</div>
+        ${stageGuide}
         ${renderContextActions(stageId)}
         <div class="info-card wide">
           <span class="mini-label">${escapeHtml(screen.label)}</span>
           <h3>${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</h3>
-          <p>The app will show only three plain-language ideas for this focus. Switch focus above when you want a different part of the phase.</p>
-          <div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal" data-refresh-mode="normal">Show ideas</button></div>
+          <p>${state.ideasLoading ? 'Finding a few useful moves for this focus…' : 'Start from one clear move and make the smallest playable version first.'}</p>
+          <div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal" data-refresh-mode="normal">${state.ideasLoading ? 'Loading…' : 'Show ideas'}</button></div>
         </div>
       </div>
     `;
@@ -930,6 +1329,7 @@ function renderBuild() {
   els.wizardBody.innerHTML = `
     <div class="build-workspace">
       <div class="phase-focus">${focusTabs}</div>
+      ${stageGuide}
       ${renderContextActions(stageId)}
       <div class="prompt-scroll stack">${state.prompts.map(renderPromptCard).join('')}</div>
     </div>
@@ -948,9 +1348,17 @@ function renderAll() {
   renderScreenHeader();
   renderBody();
   renderSectionSummary();
+  renderTrackPanel();
   renderPlanSummary();
   renderTracePanel();
   refreshExportLinks();
+}
+
+function maybeAutoRefreshBuild() {
+  const screen = currentScreen();
+  if (screen.type !== 'build') return;
+  if (state.plan[activeStageId(screen)] || state.prompts.length || state.ideasLoading) return;
+  refreshPrompts({ mode: state.promptMode || 'normal' });
 }
 
 function setProfileFromInput(input) {
@@ -989,7 +1397,7 @@ function stepTo(index) {
   state.promptMode = 'normal';
   renderAll();
   saveAppState();
-  if (currentScreen().type === 'build' && state.ideas && !state.plan[activeStageId()]) refreshPrompts();
+  maybeAutoRefreshBuild();
 }
 
 function next() {
@@ -1007,6 +1415,44 @@ function findVisibleIdea(id) {
   return all.find((idea) => ideaRef(idea) === id || idea.id === id) || null;
 }
 
+function useIdeaById(id, targetStageId = activeStageId()) {
+  const idea = findVisibleIdea(id);
+  if (!idea) return false;
+  const stageId = targetStageId || idea._stageId || activeStageId();
+  const enrichedIdea = {
+    ...idea,
+    _stageId: stageId,
+    friendly: ideaPresentation(idea, stageId),
+  };
+  state.plan[stageId] = enrichedIdea;
+  state.traceIdea = enrichedIdea;
+  markIdeaUsed(enrichedIdea);
+  state.prompts = [];
+  renderAll();
+  saveAppState();
+  return true;
+}
+
+function applyFeedbackAction(action, id) {
+  const idea = findVisibleIdea(id) || { id, _indexKey: id };
+  const current = state.ideaFeedback[id] || feedbackForIdea(idea);
+  if (action === 'pin') {
+    updateIdeaFeedback(id, { pinned: !current.pinned, rejected: false });
+    toast(current.pinned ? 'Idea unpinned' : 'Idea pinned');
+    renderAll();
+    if (state.searchResults.length) renderIdeaResults(state.searchResults);
+    return;
+  }
+  if (action === 'reject') {
+    updateIdeaFeedback(id, { rejected: true, pinned: false });
+    state.prompts = state.prompts.filter((item) => ideaRef(item) !== ideaRef(idea));
+    state.searchResults = state.searchResults.filter((item) => ideaRef(item) !== ideaRef(idea));
+    toast('Idea rejected locally');
+    renderAll();
+    if (currentScreen().type === 'build' && !state.plan[activeStageId()]) refreshPrompts({ mode: state.promptMode || 'fresh', inspiration: true });
+  }
+}
+
 function showSourceForId(id) {
   const sourceIdea = findVisibleIdea(id);
   state.traceIdea = sourceIdea ? {
@@ -1020,7 +1466,36 @@ function showSourceForId(id) {
 
 function startNewSong() {
   state.song = createDraftSong();
+  state.currentSectionId = null;
   state.profile = { ...DEFAULT_PROFILE };
+  state.plan = {};
+  state.phaseFocus = {};
+  state.prompts = [];
+  state.promptMode = 'normal';
+  state.traceIdea = null;
+  state.screenIndex = 1;
+  renderAll();
+  saveAppState();
+}
+
+function startNewSectionForSong() {
+  state.currentSectionId = null;
+  state.profile = {
+    ...DEFAULT_PROFILE,
+    keyRoot: state.profile.keyRoot,
+    pitchWorld: state.profile.pitchWorld,
+    pitchPath: state.profile.pitchPath,
+    selectedRaga: state.profile.selectedRaga,
+    noteSpelling: state.profile.noteSpelling,
+    tempo: state.profile.tempo,
+    groove: state.profile.groove,
+    mood: state.profile.mood,
+    energy: state.profile.energy,
+    instrument: state.profile.instrument,
+    gearFocus: state.profile.gearFocus,
+    domainFilters: state.profile.domainFilters,
+    notes: '',
+  };
   state.plan = {};
   state.phaseFocus = {};
   state.prompts = [];
@@ -1042,12 +1517,28 @@ function openSavedSection(id) {
   profile.keyRoot = normaliseKeyRoot(profile.keyRoot || DEFAULT_PROFILE.keyRoot, profile.noteSpelling);
   profile.pitchPath = profile.pitchPath || (profile.selectedRaga ? 'raga' : 'scale');
   if (profile.pitchPath === 'scale') profile.selectedRaga = '';
-  state.song = section.song || {
+  const openedSong = section.song || {
     id: `song_from_${section.id}`,
     title: section.summary?.title || 'Existing Song',
     sections: [section],
     updatedAt: section.createdAt || new Date().toISOString(),
   };
+  const hasOpenedSection = (openedSong.sections || []).some((item) => item.id === section.id);
+  state.song = normaliseSong(hasOpenedSection ? openedSong : {
+    ...openedSong,
+    sections: [
+      {
+        id: section.id,
+        title: section.summary?.title || profile.sectionType || 'Section',
+        profile,
+        summary: section.summary,
+        createdAt: section.createdAt,
+        updatedAt: section.updatedAt,
+      },
+      ...(openedSong.sections || []),
+    ].slice(0, 24),
+  });
+  state.currentSectionId = section.id;
   state.profile = profile;
   state.plan = section.plan || {};
   state.phaseFocus = {};
@@ -1061,23 +1552,88 @@ function openSavedSection(id) {
 
 function saveCurrentSection() {
   const snapshot = payload();
-  savePlanSnapshot(snapshot);
-  state.song = {
-    ...(state.song || createDraftSong()),
+  state.currentSectionId = snapshot.id;
+  const sectionSummary = {
+    id: snapshot.id,
+    title: snapshot.summary?.title || state.profile.sectionType || 'Section',
+    profile: snapshot.profile,
+    summary: snapshot.summary,
+    createdAt: snapshot.createdAt,
+    updatedAt: snapshot.updatedAt,
+  };
+  const updatedSongBase = {
+    ...normaliseSong(state.song || createDraftSong()),
     updatedAt: new Date().toISOString(),
     sections: [
-      {
-        id: snapshot.id,
-        title: snapshot.summary?.title || state.profile.sectionType || 'Section',
-        profile: snapshot.profile,
-        createdAt: snapshot.createdAt,
-      },
+      sectionSummary,
       ...((state.song?.sections || []).filter((section) => section.id !== snapshot.id)),
     ].slice(0, 24),
   };
+  const updatedSong = autoPlaceSectionInSong(updatedSongBase, sectionSummary);
+  state.song = updatedSong;
+  snapshot.song = updatedSong;
+  savePlanSnapshot(snapshot);
   saveAppState();
   renderSectionSummary();
+  renderPlanSummary();
+  refreshExportLinks();
   toast('Saved locally');
+}
+
+function renderIdeaResults(results = []) {
+  const canUse = currentScreen().type === 'build';
+  els.searchResults.innerHTML = results.length ? results.map((idea) => {
+    const stageId = canUse ? activeStageId() : (idea.stageBucket || currentScreen().id);
+    const presentation = ideaPresentation(idea, stageId);
+    const feedback = feedbackForIdea(idea);
+    return `
+      <div class="result-card">
+        <span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
+        <p>${escapeHtml(presentation.action)}</p>
+        <p class="result-explain">${escapeHtml(presentation.plainMeaning || '')}</p>
+        <div class="chips" style="margin-top:8px">
+          ${feedback.pinned ? `<span class="chip idea-tag">pinned</span>` : ''}
+          ${feedback.usedAt ? `<span class="chip">used before</span>` : ''}
+          ${presentation.tags.slice(0, 4).map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}
+        </div>
+        <div class="prompt-actions" style="margin-top:10px">
+          ${canUse ? `<button class="btn primary small" data-use="${escapeHtml(ideaRef(idea))}">Use here</button>` : ''}
+          <button class="btn small ${feedback.pinned ? 'is-active' : ''}" data-feedback="pin" data-feedback-idea="${escapeHtml(ideaRef(idea))}">${feedback.pinned ? 'Pinned' : 'Pin'}</button>
+          <button class="btn small" data-feedback="reject" data-feedback-idea="${escapeHtml(ideaRef(idea))}">Reject</button>
+          <button class="btn small" data-source="${escapeHtml(ideaRef(idea))}">Source</button>
+        </div>
+      </div>
+    `;
+  }).join('') : `<div class="result-card muted-box">No results.</div>`;
+}
+
+async function showSearchResults() {
+  const ideas = await loadIdeaContext();
+  if (!ideas?.length) return;
+  const results = searchIdeas(ideas, els.searchInput.value, {}).slice(0, 8);
+  state.searchResults = results;
+  renderIdeaResults(results);
+}
+
+async function showContextualResults({ random = false } = {}) {
+  const stageId = currentScreen().type === 'build' ? activeStageId() : 'section_identity';
+  const mode = random ? 'fresh' : (state.promptMode || 'normal');
+  const contextIdeas = await loadIdeaContext(stageContextIds(stageId, mode));
+  if (!contextIdeas?.length) return;
+  const results = generateStagePrompts(contextIdeas, state.profile, stageId, state.plan, {
+    inspiration: random,
+    mode,
+    recentIds: state.recentIdeaIds,
+    feedback: state.ideaFeedback,
+  }).slice(0, 8).map((idea) => ({ ...idea, _stageId: stageId }));
+  state.searchResults = results;
+  if (random) {
+    state.recentIdeaIds = [
+      ...results.map((idea) => idea.id),
+      ...state.recentIdeaIds.filter((id) => !results.some((idea) => idea.id === id)),
+    ].slice(0, 80);
+  }
+  renderIdeaResults(results);
 }
 
 function bindEvents() {
@@ -1085,14 +1641,56 @@ function bindEvents() {
   const prepareJsonExport = (event) => exportPlanJson(payload(), event.currentTarget);
 
   document.addEventListener('click', (event) => {
+    const feedback = event.target.closest('[data-feedback]');
+    if (!feedback) return;
+    event.preventDefault();
+    event.stopPropagation();
+    applyFeedbackAction(feedback.dataset.feedback, feedback.dataset.feedbackIdea);
+  }, true);
+
+  document.addEventListener('click', (event) => {
+    const autoArrange = event.target.closest('[data-auto-arrange]');
+    if (autoArrange && !els.wizardBody.contains(autoArrange)) {
+      autoArrangeSong();
+      return;
+    }
+    const openArrangement = event.target.closest('[data-open-arrangement-section]');
+    if (openArrangement && !els.wizardBody.contains(openArrangement)) {
+      openSavedSection(openArrangement.dataset.openArrangementSection);
+      return;
+    }
+    const clearArrangement = event.target.closest('[data-clear-arrangement-slot]');
+    if (clearArrangement && !els.wizardBody.contains(clearArrangement)) {
+      setArrangementSlot(clearArrangement.dataset.clearArrangementSlot, '');
+      return;
+    }
     const panelButton = event.target.closest('[data-open-panel]');
     if (panelButton) {
       setUtilityPanel(panelButton.dataset.openPanel, true);
       return;
     }
+    const drawerFeedback = event.target.closest('[data-feedback]');
+    if (drawerFeedback && !els.wizardBody.contains(drawerFeedback)) {
+      applyFeedbackAction(drawerFeedback.dataset.feedback, drawerFeedback.dataset.feedbackIdea);
+      return;
+    }
     const drawerSource = event.target.closest('[data-source]');
     if (drawerSource && !els.wizardBody.contains(drawerSource)) {
       showSourceForId(drawerSource.dataset.source);
+      return;
+    }
+    const drawerUse = event.target.closest('[data-use]');
+    if (drawerUse && !els.wizardBody.contains(drawerUse)) {
+      if (currentScreen().type === 'build') useIdeaById(drawerUse.dataset.use, activeStageId());
+      else toast('Open a build phase before choosing an idea');
+      return;
+    }
+  });
+
+  document.addEventListener('change', (event) => {
+    const arrangementSlot = event.target.closest('[data-arrangement-slot]');
+    if (arrangementSlot && !els.wizardBody.contains(arrangementSlot)) {
+      setArrangementSlot(arrangementSlot.dataset.arrangementSlot, arrangementSlot.value);
     }
   });
 
@@ -1104,12 +1702,30 @@ function bindEvents() {
   });
 
   els.wizardBody.addEventListener('input', (event) => {
+    const songTitle = event.target.closest('[data-song-title]');
+    if (songTitle) {
+      state.song = {
+        ...(state.song || createDraftSong()),
+        title: songTitle.value || 'New Song',
+        updatedAt: new Date().toISOString(),
+      };
+      renderSectionSummary();
+      saveAppState();
+      return;
+    }
+
     const input = event.target.closest('[data-profile]');
     if (!input) return;
     setProfileFromInput(input);
   });
 
   els.wizardBody.addEventListener('change', (event) => {
+    const arrangementSlot = event.target.closest('[data-arrangement-slot]');
+    if (arrangementSlot) {
+      setArrangementSlot(arrangementSlot.dataset.arrangementSlot, arrangementSlot.value);
+      return;
+    }
+
     const input = event.target.closest('[data-profile]');
     if (!input) return;
     setProfileFromInput(input);
@@ -1117,9 +1733,33 @@ function bindEvents() {
   });
 
   els.wizardBody.addEventListener('click', (event) => {
+    const autoArrange = event.target.closest('[data-auto-arrange]');
+    if (autoArrange) {
+      autoArrangeSong();
+      return;
+    }
+
+    const openArrangement = event.target.closest('[data-open-arrangement-section]');
+    if (openArrangement) {
+      openSavedSection(openArrangement.dataset.openArrangementSection);
+      return;
+    }
+
+    const clearArrangement = event.target.closest('[data-clear-arrangement-slot]');
+    if (clearArrangement) {
+      setArrangementSlot(clearArrangement.dataset.clearArrangementSlot, '');
+      return;
+    }
+
     const newSong = event.target.closest('[data-new-song]');
     if (newSong) {
       startNewSong();
+      return;
+    }
+
+    const newSection = event.target.closest('[data-new-section]');
+    if (newSection) {
+      startNewSectionForSong();
       return;
     }
 
@@ -1136,7 +1776,7 @@ function bindEvents() {
       state.promptMode = 'normal';
       renderAll();
       saveAppState();
-      if (state.ideas && !state.plan[activeStageId()]) refreshPrompts();
+      maybeAutoRefreshBuild();
       return;
     }
 
@@ -1174,20 +1814,15 @@ function bindEvents() {
       return refreshPrompts({ inspiration: refresh.dataset.refresh !== 'normal', mode });
     }
 
+    const feedback = event.target.closest('[data-feedback]');
+    if (feedback) {
+      applyFeedbackAction(feedback.dataset.feedback, feedback.dataset.feedbackIdea);
+      return;
+    }
+
     const use = event.target.closest('[data-use]');
     if (use) {
-      const idea = state.prompts.find((item) => ideaRef(item) === use.dataset.use || item.id === use.dataset.use);
-      if (!idea) return;
-      const stageId = idea._stageId || activeStageId();
-      const enrichedIdea = {
-        ...idea,
-        friendly: ideaPresentation(idea, stageId),
-      };
-      state.plan[stageId] = enrichedIdea;
-      state.traceIdea = enrichedIdea;
-      state.prompts = [];
-      renderAll();
-      saveAppState();
+      useIdeaById(use.dataset.use, activeStageId());
       return;
     }
 
@@ -1217,24 +1852,12 @@ function bindEvents() {
   els.exportMdBtn.addEventListener('pointerdown', prepareMarkdownExport);
   els.exportMdBtn.addEventListener('focus', prepareMarkdownExport);
   els.exportMdBtn.addEventListener('click', prepareMarkdownExport);
-  els.searchBtn.addEventListener('click', async () => {
-    const ok = await ensureIdeasLoaded();
-    if (!ok) return;
-    const results = searchIdeas(state.ideas, els.searchInput.value, {}).slice(0, 8);
-    state.searchResults = results;
-    els.searchResults.innerHTML = results.length ? results.map((idea) => {
-      const presentation = ideaPresentation(idea, idea.stageBucket || currentScreen().id);
-      return `
-        <div class="result-card">
-          <span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
-          <p>${escapeHtml(presentation.action)}</p>
-          <p class="result-explain">${escapeHtml(presentation.plainMeaning || '')}</p>
-          <div class="chips" style="margin-top:8px">${presentation.tags.slice(0, 4).map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
-          <div class="prompt-actions" style="margin-top:10px"><button class="btn small" data-source="${escapeHtml(ideaRef(idea))}">Source</button></div>
-        </div>
-      `;
-    }).join('') : `<div class="result-card muted-box">No results.</div>`;
+  els.searchBtn.addEventListener('click', showSearchResults);
+  els.searchInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') showSearchResults();
   });
+  els.contextIdeasBtn?.addEventListener('click', () => showContextualResults());
+  els.randomSearchBtn?.addEventListener('click', () => showContextualResults({ random: true }));
 }
 
 async function init() {

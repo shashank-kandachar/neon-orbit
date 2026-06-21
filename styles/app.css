@@ -31,6 +31,7 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 .page-bg {
@@ -355,6 +356,12 @@ select:focus, input:focus, textarea:focus { border-color: var(--line-strong); bo
 .mini-card strong { display: block; overflow-wrap: anywhere; }
 .muted-box { color: var(--muted); }
 .search-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.search-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 .toast {
   position: fixed;
   left: 50%;
@@ -577,6 +584,7 @@ body {
 .app-shell {
   height: 100vh;
   height: 100svh;
+  height: 100dvh;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 10px;
@@ -665,6 +673,7 @@ body {
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-right: 4px;
 }
 
@@ -728,7 +737,7 @@ select {
 .song-entry {
   min-height: 100%;
   display: grid;
-  grid-template-columns: minmax(280px, 0.85fr) minmax(340px, 1.15fr);
+  grid-template-columns: minmax(220px, 0.75fr) minmax(280px, 1fr) minmax(320px, 1.15fr);
   gap: 14px;
 }
 
@@ -759,6 +768,116 @@ button.entry-card {
   line-height: 1.45;
 }
 
+.song-title-field {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+}
+
+.song-title-field span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.section-list-label {
+  margin-top: 14px;
+}
+
+.track-arrangement {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.track-arrangement.compact {
+  margin-top: 0;
+}
+
+.track-arrangement-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.track-arrangement-head h3 {
+  font-size: 1rem;
+}
+
+.arrangement-slots {
+  display: grid;
+  gap: 8px;
+}
+
+.arrangement-slot {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: rgba(255,255,255,0.04);
+  padding: 10px;
+}
+
+.arrangement-slot.is-filled {
+  border-color: rgba(202,255,130,0.28);
+  background: rgba(202,255,130,0.06);
+}
+
+.slot-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(77,226,255,0.12);
+  color: var(--cyan);
+  font-weight: 800;
+  font-size: 0.82rem;
+}
+
+.slot-main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.slot-main span {
+  color: var(--cyan);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.slot-main strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.slot-main em {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.slot-main select {
+  margin-top: 3px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-size: 0.9rem;
+}
+
+.slot-actions {
+  display: grid;
+  gap: 7px;
+}
+
 .primary-entry {
   background: linear-gradient(135deg, rgba(77,226,255,0.16), rgba(202,255,130,0.08));
 }
@@ -768,6 +887,7 @@ button.entry-card {
   gap: 8px;
   max-height: min(48vh, 360px);
   overflow: auto;
+  overscroll-behavior: contain;
   margin-top: 14px;
   padding-right: 3px;
 }
@@ -789,6 +909,23 @@ button.entry-card {
 .section-row span {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.section-row strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.section-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.section-row.is-current {
+  border-color: rgba(202,255,130,0.36);
+  background: rgba(202,255,130,0.08);
 }
 
 .setup-workspace {
@@ -932,7 +1069,7 @@ button.entry-card {
 .build-workspace {
   min-height: 100%;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -975,11 +1112,79 @@ button.entry-card {
   white-space: nowrap;
 }
 
+.stage-guide {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(220px, 1fr) minmax(220px, 1.1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px;
+  background: rgba(3,5,14,0.26);
+  padding: 12px;
+}
+
+.stage-guide-main,
+.stage-guide-context,
+.stage-guide-listen {
+  min-width: 0;
+}
+
+.stage-guide h3 {
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.stage-guide p {
+  font-size: 0.88rem;
+  line-height: 1.42;
+}
+
+.stage-guide-context,
+.stage-guide-listen {
+  border-left: 1px solid rgba(255,255,255,0.09);
+  padding-left: 10px;
+}
+
+.stage-guide-context span,
+.stage-guide-listen span {
+  display: block;
+  color: var(--cyan);
+  font-size: 0.73rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.stage-guide-context strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.stage-guide-actions {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+}
+
 .prompt-scroll {
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding-right: 4px;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .wizard-body,
+  .prompt-scroll,
+  .section-list,
+  .utility-panel .drawer {
+    transform: translateZ(0);
+  }
 }
 
 .chosen-idea {
@@ -1005,6 +1210,38 @@ button.entry-card {
   .setup-workspace {
     grid-template-columns: 1fr;
   }
+  .stage-guide {
+    grid-template-columns: 1fr;
+  }
+  .stage-guide-context,
+  .stage-guide-listen {
+    border-left: 0;
+    border-top: 1px solid rgba(255,255,255,0.09);
+    padding-left: 0;
+    padding-top: 10px;
+  }
+  .stage-guide-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .arrangement-slot {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .slot-actions {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .build-workspace {
+    display: block;
+  }
+  .build-workspace > * + * {
+    margin-top: 12px;
+  }
+  .prompt-scroll {
+    overflow: visible;
+    padding-right: 0;
+  }
   .setup-panel {
     overflow: visible;
   }
@@ -1020,12 +1257,23 @@ button.entry-card {
   .status-card {
     display: none;
   }
+  .hero-card p {
+    display: none;
+  }
+  .hero-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+    padding-bottom: 2px;
+  }
+  .hero-actions .btn {
+    width: auto;
+    flex: 0 0 auto;
+  }
   .setup-grid,
   .pitch-detail-grid.compact,
   .pitch-path-grid.compact {
     grid-template-columns: 1fr;
-  }
-  .hero-actions .btn {
-    flex-basis: calc(50% - 6px);
   }
 }

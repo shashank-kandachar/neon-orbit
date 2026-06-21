@@ -176,6 +176,7 @@ def load_json(path: Path):
 
 
 def write_json(path: Path, payload) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, separators=(",", ":"))
         handle.write("\n")
@@ -333,7 +334,7 @@ def representative_score(record: dict) -> tuple:
     )
 
 
-def build_prompt_index(input_path: Path, output_path: Path) -> dict:
+def build_prompt_index(input_path: Path, output_path: Path, chunk_dir: Path | None = None) -> dict:
     ideas = load_json(input_path)
     prompt_groups: dict[str, list[dict]] = defaultdict(list)
     empty_prompt_count = 0
@@ -387,21 +388,67 @@ def build_prompt_index(input_path: Path, output_path: Path) -> dict:
         "stageBuckets": stage_buckets,
     }
     write_json(output_path, payload)
+    if chunk_dir:
+        write_prompt_chunks(payload, chunk_dir)
     return payload
+
+
+def write_prompt_chunks(payload: dict, chunk_dir: Path) -> None:
+    stage_dir = chunk_dir / "stages"
+    meta = payload["meta"]
+    stage_manifest = {}
+
+    for stage in STAGE_ORDER:
+        records = payload["stageBuckets"].get(stage, [])
+        stage_path = stage_dir / f"{stage}.json"
+        stage_payload = {
+            "meta": {
+                "generatedAtUtc": meta["generatedAtUtc"],
+                "sourceFile": meta["sourceFile"],
+                "stage": stage,
+                "recordCount": len(records),
+                "note": "Derived stage prompt chunk. The audited compact idea file remains the source of truth.",
+            },
+            "ideas": records,
+        }
+        write_json(stage_path, stage_payload)
+        stage_manifest[stage] = {
+            "path": f"stages/{stage}.json",
+            "recordCount": len(records),
+        }
+
+    manifest = {
+        "meta": {
+            "generatedAtUtc": meta["generatedAtUtc"],
+            "sourceFile": meta["sourceFile"],
+            "rawIdeaCount": meta["rawIdeaCount"],
+            "emptyPromptCount": meta["emptyPromptCount"],
+            "unusablePromptCount": meta["unusablePromptCount"],
+            "promptableGroupCount": meta["promptableGroupCount"],
+            "exactPromptDuplicateGroups": meta["exactPromptDuplicateGroups"],
+            "sourceAlternatesPreserved": meta["sourceAlternatesPreserved"],
+            "stageCount": len(STAGE_ORDER),
+            "note": "Chunk manifest for lazy local-first loading. The audited compact idea file remains the source of truth.",
+        },
+        "stages": stage_manifest,
+    }
+    write_json(chunk_dir / "manifest.json", manifest)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", default="data/ideas.compact.json")
     parser.add_argument("--output", default="data/prompt-index.json")
+    parser.add_argument("--chunk-dir", default="data/prompt-index")
     args = parser.parse_args()
 
-    payload = build_prompt_index(Path(args.input), Path(args.output))
+    payload = build_prompt_index(Path(args.input), Path(args.output), Path(args.chunk_dir))
     meta = payload["meta"]
     print(
         f"Wrote {args.output}: {meta['promptableGroupCount']} prompt groups, "
         f"{meta['sourceAlternatesPreserved']} source alternates preserved."
     )
+    print(f"Wrote stage chunks to {args.chunk_dir}.")
 
 
 if __name__ == "__main__":

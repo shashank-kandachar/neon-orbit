@@ -3,7 +3,7 @@ import {
   ideaClarityScore,
   ideaIsUsable,
   normaliseIdeaPromptKey,
-} from './idea-presenter.js?v=keyfirst3.26';
+} from './idea-presenter.js?v=keyfirst3.30';
 
 const INDEX_CACHE = new WeakMap();
 
@@ -460,6 +460,8 @@ function isStrictRagaRecord(record) {
 function scoreRecord(record, profile, stageId, tags, options = {}) {
   const mode = options.mode || 'normal';
   const recentIds = options.recentIds || new Set();
+  const feedback = options.feedback || {};
+  const recordFeedback = feedback[record.key] || feedback[record.id] || {};
   let score = 0;
   score += scoreStage(record, stageId);
   score += scoreTags(record, tags, mode);
@@ -477,6 +479,9 @@ function scoreRecord(record, profile, stageId, tags, options = {}) {
   if (mode === 'raga') {
     score += isRagaRecord(record) ? 28 : -22;
   }
+  if (recordFeedback.pinned) score += 24;
+  if (recordFeedback.usedAt) score -= mode === 'normal' ? 8 : 16;
+  if (recordFeedback.rejected) score -= 120;
   if (recentIds.has(record.id)) score -= mode === 'normal' ? 12 : 30;
   if (options.inspiration || mode === 'fresh' || mode === 'deeper') score += Math.floor(Math.random() * 32);
   return score;
@@ -513,6 +518,7 @@ export function selectContextualIdeas(ideas, profile, stageId, plan = {}, option
   const tags = contextTags(profile, stageId, mode);
   const selectedIds = new Set(Object.values(plan).filter(Boolean).map((entry) => entry.id));
   const recentIds = new Set(options.recentIds || []);
+  const feedback = options.feedback || {};
   const rawCandidates = candidatePool(index, stageId, tags, mode);
   const scopedCandidates = mode === 'raga'
     ? (() => {
@@ -529,6 +535,7 @@ export function selectContextualIdeas(ideas, profile, stageId, plan = {}, option
     : rawCandidates;
   const candidates = scopedCandidates
     .filter((record) => !selectedIds.has(record.id))
+    .filter((record) => !(feedback[record.key] || feedback[record.id] || {}).rejected)
     .map((record) => ({
       record,
       score: scoreRecord(record, profile, stageId, tags, { ...options, mode, recentIds }),

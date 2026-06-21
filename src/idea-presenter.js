@@ -1,4 +1,4 @@
-import { getPitchContext } from './pitch-utils.js?v=keyfirst3.26';
+import { getPitchContext } from './pitch-utils.js?v=keyfirst3.30';
 
 const STAGE_TITLES = {
   section_identity: 'Shape the feeling',
@@ -94,6 +94,8 @@ const JARGON_REPLACEMENTS = [
   [/\bgranular\b/gi, 'tiny chopped fragments'],
   [/\bpolyrhythm\b/gi, 'two pulses at once'],
   [/\bostinato\b/gi, 'short repeating pattern'],
+  [/\blive drummer lock\b/gi, 'a drummer-like groove that locks in'],
+  [/\bvocal or chant layer\b/gi, 'the vocal or chant layer'],
   [/\bresample\b/gi, 'record the sound back into Ableton'],
   [/\bresampling\b/gi, 'recording the sound back into Ableton'],
   [/\bautomation\b/gi, 'movement over time'],
@@ -261,6 +263,52 @@ const CONCEPT_GLOSSARY = [
       'Keep the move that makes the hook clearer or stranger in a useful way.',
     ],
   },
+  {
+    pattern: /\binner space\b|\bquiet mind\b|\bsurrender\b/i,
+    term: 'Inner space',
+    meaning: 'A calmer way into the part: listen before reacting, then make one small musical move with attention.',
+    tryThis: 'Mute or simplify the section briefly, then bring back only the sound that still feels necessary.',
+  },
+  {
+    pattern: /\bresonance\b/i,
+    term: 'Resonance',
+    meaning: 'The way a note, room, string, delay or filter keeps vibrating after the first attack.',
+    tryThis: 'Let one note ring and shape the tail with pickup choice, delay, reverb, filter or volume.',
+    steps: (ctx) => [
+      `Play or hold ${ctx.root} and listen to the tail before adding notes.`,
+      'Choose one thing to shape the ringing sound: delay, reverb, filter, drive, pickup or volume pedal.',
+      'Leave space after the note so the resonance becomes part of the phrase.',
+    ],
+  },
+  {
+    pattern: /\bduple time\b|\btriple time\b|\bmeter\b/i,
+    term: 'Meter feel',
+    meaning: 'The basic counting feel underneath the groove: two/four-based, three-based, or something that leans between them.',
+    tryThis: 'Clap or mute-pick the pulse first, then let the drums and bass confirm where the weight lands.',
+  },
+  {
+    pattern: /\bsilence\b|\bnear-silence\b|\babsence\b/i,
+    term: 'Charged silence',
+    meaning: 'A gap that feels intentional, where the listener leans in instead of feeling that the track has stopped.',
+    tryThis: 'Remove a layer for one bar and let delay, room tone or a held note carry the space.',
+    steps: (ctx) => [
+      `Choose the layer that can disappear without losing ${ctx.keyLabel}.`,
+      'Mute or thin it for one bar so the absence feels deliberate.',
+      'Bring back only one sound: bass, guitar tail, field sound or a filtered drum.',
+    ],
+  },
+  {
+    pattern: /\blive drummer lock\b|\block\b|\bpocket\b/i,
+    term: 'Pocket',
+    meaning: 'The relaxed but steady place where the rhythm feels held together by a human body.',
+    tryThis: 'Move one rhythmic layer slightly late or early, then stop when the groove feels better rather than more precise.',
+  },
+  {
+    pattern: /\bimaginary geography\b|\bgeography\b|\bnarrative\b/i,
+    term: 'Imagined place',
+    meaning: 'Treat the section like a place the listener can enter: near or far, dry or spacious, crowded or open, still or moving.',
+    tryThis: 'Keep the notes simple and use texture, reverb, field sound, panning or filtering to create the sense of place.',
+  },
 ];
 
 function normalise(value = '') {
@@ -403,6 +451,11 @@ function addTag(tags, tag) {
 function cleanMaterial(value = '') {
   const text = applyGlossary(String(value || ''))
     .replace(/[_-]+/g, ' ')
+    .replace(/^(.+?) applied to (.+)$/i, '$2, using $1')
+    .replace(/\blive drummer lock\b/gi, 'a drummer-like groove that locks in')
+    .replace(/\bduple time\b/gi, 'a two- or four-beat feel')
+    .replace(/\bjazz improvisation as psychedelic opening\b/gi, 'a loose opening phrase with an inward psychedelic feel')
+    .replace(/\bvocal or chant layer\b/gi, 'the vocal or chant layer')
     .replace(/\bthis track\b/gi, 'this part')
     .replace(/\s+/g, ' ')
     .trim();
@@ -513,12 +566,46 @@ function buildPlainMeaning(idea, stageId, profile, pitchContext, action, concept
   return `${STAGE_MEANINGS[stageId] || 'This is a practical composition move.'} Start with ${ctx.material}, make it audible, then add only what helps the section.`;
 }
 
+function cleanDirectiveStep(text = '') {
+  return sentenceCase(applyGlossary(text)
+    .replace(/\bUse this as the app.s entry ritual before creative generation begins\.?/gi, '')
+    .replace(/\bThe musical decision should emerge after the nervous system has softened\.?/gi, 'Let the next musical move come from calm listening.')
+    .replace(/\bMake the result a practical this track\b/gi, 'Make it practical')
+    .replace(/\bthe app\b/gi, 'the session')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[.;:,]+$/, ''));
+}
+
+function directiveStepsFromAction(action = '', ctx) {
+  const withoutSourceTail = action
+    .replace(/\bUse this as the app.s entry ritual before creative generation begins\.?/gi, '')
+    .replace(/\bMake it useful as a .*$/i, '')
+    .trim();
+  const parts = withoutSourceTail
+    .split(/\s*;\s*|\.\s+|\b,\s*then\s+|\bthen\s+/i)
+    .map(cleanDirectiveStep)
+    .filter((part) => part.length > 18)
+    .filter((part, index, list) => list.indexOf(part) === index)
+    .slice(0, 3);
+
+  if (parts.length >= 2) {
+    return [
+      ...parts.slice(0, 3),
+      `Stop when the ${ctx.sectionType.toLowerCase()} feels clearer, warmer or more playable.`,
+    ].slice(0, 4);
+  }
+  return [];
+}
+
 function buildSteps(idea, stageId, profile, pitchContext, action, concepts) {
   const keyLabel = pitchContext?.label || `${profile.keyRoot || 'D'} ${profile.pitchWorld || ''}`.trim();
   const notes = pitchContext?.notes?.slice(0, 7).join(', ');
   const ctx = stepContext(idea, profile, pitchContext, action);
   const conceptWithSteps = concepts.find((concept) => typeof concept.steps === 'function');
   if (conceptWithSteps) return conceptWithSteps.steps(ctx).slice(0, 4);
+  const directiveSteps = directiveStepsFromAction(action, ctx);
+  if (directiveSteps.length) return directiveSteps;
 
   if (stageId === 'pitch_material' || stageId === 'motif_hook') {
     return [

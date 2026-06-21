@@ -57,6 +57,22 @@ export function exportPlanMarkdown(payload, stages, trigger) {
   lines.push('');
   lines.push(`**Profile:** ${payload.summary.subtitle}`);
   lines.push('');
+  if (payload.song?.arrangement?.length) {
+    const sections = new Map((payload.song.sections || []).map((section) => [section.id, section]));
+    lines.push('## Track arrangement');
+    payload.song.arrangement.forEach((slot, index) => {
+      const section = sections.get(slot.sectionId);
+      const label = slot.id.replaceAll('_', ' ');
+      if (section) {
+        const profile = section.profile || {};
+        const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
+        lines.push(`- **${index + 1}. ${label}:** ${section.title || profile.sectionType || 'Section'}${key ? ` — ${key}` : ''}`);
+      } else {
+        lines.push(`- **${index + 1}. ${label}:** —`);
+      }
+    });
+    lines.push('');
+  }
   lines.push('## Setup');
   Object.entries(payload.profile).forEach(([key, value]) => {
     if (Array.isArray(value)) {

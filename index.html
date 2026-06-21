@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Neon Orbit — Composition Guide</title>
-  <link rel="stylesheet" href="./styles/app.css?v=keyfirst3.26" />
+  <link rel="stylesheet" href="./styles/app.css?v=keyfirst3.30" />
 </head>
 <body>
   <div class="page-bg"></div>
@@ -21,6 +21,7 @@
         <button class="btn secondary" id="saveBtn">Save</button>
         <a class="btn secondary" id="exportMdBtn" href="#" role="button">Export MD</a>
         <a class="btn secondary" id="exportJsonBtn" href="#" role="button">Export JSON</a>
+        <button class="btn secondary" data-open-panel="track">Track</button>
         <button class="btn secondary" data-open-panel="section">Section</button>
         <button class="btn secondary" data-open-panel="plan">Plan</button>
         <button class="btn secondary" data-open-panel="trace">Trace</button>
@@ -66,6 +67,11 @@
         <div id="sectionSummary" class="mini-grid"></div>
       </details>
 
+      <details class="drawer" data-panel-view="track" open>
+        <summary>Track arrangement</summary>
+        <div id="trackPanel" class="stack"></div>
+      </details>
+
       <details class="drawer" data-panel-view="plan" open>
         <summary>Chosen prompts</summary>
         <div id="planSummary" class="stack"></div>
@@ -78,6 +84,10 @@
 
       <details class="drawer" data-panel-view="search" open>
         <summary>Search ideas</summary>
+        <div class="search-tools">
+          <button class="btn secondary small" id="contextIdeasBtn">Current focus</button>
+          <button class="btn secondary small" id="randomSearchBtn">Random fit</button>
+        </div>
         <div class="search-row">
           <input id="searchInput" type="search" placeholder="Search prompt text, gear, domains, books…" />
           <button class="btn secondary" id="searchBtn">Search</button>
@@ -89,6 +99,6 @@
 
   <div class="toast hidden" id="toast"></div>
 
-  <script type="module" src="./src/main.js?v=keyfirst3.26"></script>
+  <script type="module" src="./src/main.js?v=keyfirst3.30"></script>
 </body>
 </html>
