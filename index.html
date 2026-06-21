@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Orbit — Composition Guide</title>
+  <link rel="stylesheet" href="./styles/app.css" />
+</head>
+<body>
+  <div class="aurora"></div>
+  <div class="grid-glow"></div>
+
+  <div class="app-shell">
+    <header class="topbar panel">
+      <div class="brand-block">
+        <div class="brand-kicker">Neon Orbit</div>
+        <h1>Composition Guide</h1>
+        <p class="muted">A fresh local-first section builder for psychedelic live-electronic composition.</p>
+      </div>
+      <div class="topbar-stats" id="topbarStats"></div>
+      <div class="topbar-actions">
+        <button class="button ghost" id="saveSnapshotBtn">Save snapshot</button>
+        <button class="button ghost" id="exportMdBtn">Export Markdown</button>
+        <button class="button ghost" id="exportJsonBtn">Export JSON</button>
+        <button class="button danger" id="resetBuilderBtn">Reset builder</button>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="left-rail panel">
+        <section class="rail-section">
+          <div class="section-head">
+            <h2>Section setup</h2>
+            <span class="pill">Full width</span>
+          </div>
+          <form id="setupForm" class="setup-form">
+            <label>
+              <span>Scale / raga / mode / pitch world</span>
+              <select id="pitchWorldSelect" name="pitchWorld"></select>
+            </label>
+            <label>
+              <span>Optional raga focus</span>
+              <select id="ragaSelect" name="selectedRaga">
+                <option value="">No specific raga</option>
+              </select>
+            </label>
+            <div class="two-up">
+              <label>
+                <span>Tempo</span>
+                <input type="number" id="tempoInput" name="tempo" min="40" max="220" step="1" />
+              </label>
+              <label>
+                <span>Energy</span>
+                <select id="energySelect" name="energy"></select>
+              </label>
+            </div>
+            <label>
+              <span>Mood</span>
+              <select id="moodSelect" name="mood"></select>
+            </label>
+            <label>
+              <span>Section type</span>
+              <select id="sectionTypeSelect" name="sectionType"></select>
+            </label>
+            <label>
+              <span>Groove / rhythm feel</span>
+              <select id="grooveSelect" name="groove"></select>
+            </label>
+            <label>
+              <span>Main instrument / sound source</span>
+              <select id="instrumentSelect" name="instrument"></select>
+            </label>
+            <label>
+              <span>Notes / intent</span>
+              <textarea id="notesInput" name="notes" rows="4" placeholder="Optional note to self: what is this section trying to become?"></textarea>
+            </label>
+          </form>
+        </section>
+
+        <section class="rail-section">
+          <div class="section-head">
+            <h2>Gear focus</h2>
+            <button class="text-action" id="clearGearBtn">Clear</button>
+          </div>
+          <div id="gearChecklist" class="checkbox-grid"></div>
+          <div id="gearGuidance" class="info-stack"></div>
+        </section>
+
+        <section class="rail-section">
+          <div class="section-head">
+            <h2>Knowledge filters</h2>
+            <button class="text-action" id="clearDomainBtn">Clear</button>
+          </div>
+          <div id="domainChecklist" class="checkbox-grid domain-grid"></div>
+        </section>
+
+        <section class="rail-section compact">
+          <div class="section-head">
+            <h2>Inspiration mode</h2>
+            <span class="pill accent">Controlled drift</span>
+          </div>
+          <p class="muted">Pull a wilder but still relevant set of prompts for the current stage.</p>
+          <button class="button primary wide" id="inspirationBtn">Generate inspiration</button>
+        </section>
+      </aside>
+
+      <section class="centre-lane">
+        <div class="centre-top panel">
+          <div class="builder-head">
+            <div>
+              <div class="brand-kicker">Section builder</div>
+              <h2 id="stageTitle">Define section identity</h2>
+              <p class="muted" id="stageBlurb"></p>
+            </div>
+            <div class="builder-actions">
+              <button class="button secondary" id="loadIdeasBtn">Load ideas</button>
+              <button class="button primary" id="refreshStageBtn">Refresh prompts</button>
+            </div>
+          </div>
+          <div id="stageNav" class="stage-nav"></div>
+        </div>
+
+        <div class="view-toggle panel slim">
+          <button class="tab-button active" data-view="builder">Builder</button>
+          <button class="tab-button" data-view="browse">Browse</button>
+          <button class="tab-button" data-view="saved">Saved</button>
+        </div>
+
+        <section class="panel main-panel" id="builderView">
+          <div class="prompt-head">
+            <div>
+              <h3>Guided prompts</h3>
+              <p class="muted">The app serves a small, relevant set of ideas instead of overwhelming you with the whole pool.</p>
+            </div>
+            <div class="legend">
+              <span class="legend-item"><i class="dot high"></i> Strong match</span>
+              <span class="legend-item"><i class="dot mid"></i> Good fit</span>
+              <span class="legend-item"><i class="dot low"></i> Wild card</span>
+            </div>
+          </div>
+          <div id="promptCards" class="prompt-grid"></div>
+        </section>
+
+        <section class="panel main-panel hidden" id="browseView">
+          <div class="browse-toolbar">
+            <input type="search" id="searchInput" placeholder="Search prompts, books, domains, tags..." />
+            <select id="browseStageFilter"><option value="">All stages</option></select>
+            <select id="browseDomainFilter"><option value="">All domains</option></select>
+            <select id="browseGearFilter"><option value="">All gear</option></select>
+            <button class="button secondary" id="searchBtn">Search</button>
+          </div>
+          <div id="browseResults" class="browse-results"></div>
+        </section>
+
+        <section class="panel main-panel hidden" id="savedView">
+          <div class="section-head">
+            <h3>Saved snapshots</h3>
+            <p class="muted">Local-only section plans stored in your browser.</p>
+          </div>
+          <div id="savedPlans" class="saved-grid"></div>
+        </section>
+      </section>
+
+      <aside class="right-rail panel">
+        <section class="rail-section">
+          <div class="section-head">
+            <h2>Section plan</h2>
+            <span class="pill" id="completedCountPill">0 / 15</span>
+          </div>
+          <div id="sectionSummary" class="summary-card"></div>
+          <div id="sectionPlan" class="plan-stack"></div>
+        </section>
+
+        <section class="rail-section">
+          <div class="section-head">
+            <h2>Source trace</h2>
+            <span class="pill accent">Authority-aware</span>
+          </div>
+          <div id="tracePanel" class="trace-panel empty">
+            <p class="muted">Choose “Why this?” on a prompt to inspect its source, domains and applicability.</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div class="loading-overlay hidden" id="loadingOverlay">
+    <div class="loading-card panel">
+      <div class="brand-kicker">Neon Orbit</div>
+      <h2 id="loadingTitle">Loading authority data</h2>
+      <p class="muted" id="loadingText">Preparing the audited idea pool for the builder.</p>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
