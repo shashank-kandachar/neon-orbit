@@ -1,4 +1,4 @@
-import { ideaClarityScore, ideaIsUsable, normaliseIdeaPromptKey } from './idea-presenter.js?v=keyfirst3.10';
+import { ideaClarityScore, ideaIsUsable, normaliseIdeaPromptKey } from './idea-presenter.js?v=keyfirst3.11';
 
 const ENERGY_ALIASES = {
   'low': ['low', 'quiet', 'intimate', 'subtle', 'ambient'],

@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.10';
-import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.10';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.10';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.10';
-import { formatPitchSummary } from './pitch-utils.js?v=keyfirst3.10';
-import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js?v=keyfirst3.10';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.10';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.11';
+import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.11';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.11';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.11';
+import { formatPitchSummary, getPitchContext } from './pitch-utils.js?v=keyfirst3.11';
+import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js?v=keyfirst3.11';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.11';
 
 const SETUP_SCREENS = [
   { id: 'start', type: 'start', label: 'Start', blurb: 'A calm start before the app serves prompts.' },
@@ -84,6 +84,12 @@ function hydrateState() {
   const stored = loadState();
   if (!stored) return;
   state.profile = { ...DEFAULT_PROFILE, ...(stored.profile || {}) };
+  state.profile.pitchPath = state.profile.pitchPath || (state.profile.selectedRaga ? 'raga' : 'scale');
+  if (!['scale', 'raga'].includes(state.profile.pitchPath)) state.profile.pitchPath = 'scale';
+  if (state.profile.pitchPath === 'scale') {
+    state.profile.selectedRaga = '';
+    normaliseScalePitchWorld();
+  }
   state.plan = stored.plan || {};
   state.screenIndex = stored.screenIndex || stored.currentIndex || 0;
   state.traceIdea = stored.traceIdea || null;
@@ -100,7 +106,10 @@ function optionList(values, selected = '', emptyLabel = '') {
 
 function isDone(screen) {
   if (screen.id === 'start') return true;
-  if (screen.id === 'pitch') return Boolean(state.profile.keyRoot && state.profile.pitchWorld);
+  if (screen.id === 'pitch') {
+    if (activePitchPath() === 'raga') return Boolean(state.profile.keyRoot && state.profile.selectedRaga);
+    return Boolean(state.profile.keyRoot && state.profile.pitchWorld);
+  }
   if (screen.id === 'motion') return Boolean(state.profile.tempo && state.profile.groove);
   if (screen.id === 'identity') return Boolean(state.profile.mood && state.profile.sectionType && state.profile.energy);
   if (screen.id === 'source') return Boolean(state.profile.instrument);
@@ -134,7 +143,7 @@ function payload() {
 }
 
 function selectedRagaCard() {
-  if (!state.profile.selectedRaga) return null;
+  if (activePitchPath() !== 'raga' || !state.profile.selectedRaga) return null;
   return state.bootstrap?.ragaData?.cards?.find((card) => card.name === state.profile.selectedRaga) || null;
 }
 
@@ -145,6 +154,48 @@ function ideaPresentation(idea, stageId = currentScreen().id) {
 function refreshExportLinks() {
   exportPlanMarkdown(payload(), STAGES, els.exportMdBtn);
   exportPlanJson(payload(), els.exportJsonBtn);
+}
+
+function activePitchPath() {
+  return state.profile.pitchPath || (state.profile.selectedRaga ? 'raga' : 'scale');
+}
+
+function currentKeyLabel() {
+  const root = state.profile.keyRoot || '—';
+  if (activePitchPath() === 'raga') {
+    return `${root} ${state.profile.selectedRaga || 'raga'}`.trim();
+  }
+  return `${root} ${state.profile.pitchWorld || 'open pitch world'}`.trim();
+}
+
+function cleanedRagaFeatures(card, limit = 2) {
+  const sourceHistoryPattern = /\b(portrayed|plate|ragamala|painting|paintings|Damodara|Ahobala|Faqirullah|Bhatkhande|composition follows|song text)\b/i;
+  return (card?.keyFeatures || [])
+    .map((feature) => String(feature || '')
+      .replace(/\s*\|\s*/g, ' ')
+      .replace(/"\s+in\b/gi, ' In')
+      .replaceAll('"', '')
+      .replace(/\s+/g, ' ')
+      .trim())
+    .filter((feature) => feature.length > 24 && (feature.match(/[=<>_]/g) || []).length < 8)
+    .filter((feature) => !sourceHistoryPattern.test(feature))
+    .map((feature) => {
+      if (feature.length <= 180) return feature;
+      return `${feature.slice(0, 180).replace(/\s+\S*$/, '')}...`;
+    })
+    .slice(0, limit);
+}
+
+function normaliseScalePitchWorld() {
+  if (state.profile.pitchWorld === 'Raga-driven') state.profile.pitchWorld = DEFAULT_PROFILE.pitchWorld;
+}
+
+function cleanTimeWindow(value = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'Open';
+  if (/\bcan$/i.test(text)) return 'Open or closing-section friendly';
+  if (text.length <= 90) return text;
+  return `${text.slice(0, 90).replace(/\s+\S*$/, '')}...`;
 }
 
 function renderStatus() {
@@ -180,7 +231,7 @@ function renderScreenHeader() {
 function renderSectionSummary() {
   const p = state.profile;
   const rows = [
-    ['Key', p.selectedRaga ? `${p.keyRoot || '—'} ${p.selectedRaga}` : `${p.keyRoot || '—'} ${p.pitchWorld || ''}`],
+    ['Key', currentKeyLabel()],
     ['Tempo', p.tempo ? `${p.tempo} BPM` : '—'],
     ['Mood', p.mood],
     ['Section', p.sectionType],
@@ -245,22 +296,55 @@ function renderStart() {
 
 function renderPitch() {
   const ragas = state.bootstrap.ragaData.cards.map((card) => card.name);
-  const selectedRaga = state.bootstrap.ragaData.cards.find((card) => card.name === state.profile.selectedRaga);
+  const path = activePitchPath();
+  const selectedRaga = selectedRagaCard();
+  const pitchContext = getPitchContext(state.profile, selectedRaga);
   const pitchSummary = formatPitchSummary(state.profile, selectedRaga);
   const keyRoots = APP_OPTIONS.keyRoots || ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-  const scaleLabel = state.profile.selectedRaga ? state.profile.selectedRaga : state.profile.pitchWorld;
-  const keyLabel = `${state.profile.keyRoot || '—'} ${scaleLabel || ''}`.trim();
+  const scaleWorlds = (APP_OPTIONS.pitchWorlds || []).filter((world) => world !== 'Raga-driven');
+  if (state.profile.pitchWorld && !scaleWorlds.includes(state.profile.pitchWorld)) scaleWorlds.push(state.profile.pitchWorld);
+  const keyLabel = currentKeyLabel();
+  const root = state.profile.keyRoot || 'D';
+  const intervals = pitchContext.intervals?.length ? pitchContext.intervals.join(' - ') : 'No fixed interval set yet';
+  const notes = pitchContext.notes?.length
+    ? pitchContext.notes.join(', ')
+    : path === 'raga'
+      ? `${root} is Sa/home. Choose a raga to see a common pitch reference.`
+      : `${root} is home. Keep the note set small until the section has a clear centre.`;
+  const ragaInfo = pitchContext.ragaInfo || null;
+  const ragaFeatures = cleanedRagaFeatures(selectedRaga);
+  const sourceLine = selectedRaga?.source ? `Source trace: ${selectedRaga.source}` : '';
+  const ragaBehaviour = [
+    pitchSummary.tip,
+    `Keep a drone or bass anchor on ${root}, then write one short phrase that returns to Sa before adding extra notes.`,
+    ...ragaFeatures,
+  ].filter(Boolean).filter((feature, index, list) => list.indexOf(feature) === index).slice(0, 3);
 
   els.wizardBody.innerHTML = `
     <div class="key-screen">
       <div class="field-card wide key-hero">
         <span class="mini-label">Current key world</span>
-        <h3>${escapeHtml(keyLabel || 'Choose a note and scale')}</h3>
-        <p>First choose your tonic/root note. Then choose the scale, mode or raga behaviour that colours the section.</p>
+        <h3>${escapeHtml(keyLabel)}</h3>
+        <p>${path === 'raga'
+          ? 'Treat the chosen note as Sa/home, then follow the raga behaviour card for movement, emphasis and mood.'
+          : 'Use the chosen note as home, then let the scale or mode define the available colours.'}</p>
       </div>
 
-      <div class="field-card wide">
-        <h3>1. Choose the note</h3>
+      <div class="pitch-path-grid" role="group" aria-label="Choose pitch route">
+        <button type="button" class="pitch-path-card ${path === 'scale' ? 'is-selected' : ''}" data-pitch-path="scale" aria-pressed="${path === 'scale'}">
+          <span>Scale / mode</span>
+          <strong>Clear notes and intervals</strong>
+          <em>Dorian, Lydian dominant, pentatonic and other non-raga worlds.</em>
+        </button>
+        <button type="button" class="pitch-path-card ${path === 'raga' ? 'is-selected' : ''}" data-pitch-path="raga" aria-pressed="${path === 'raga'}">
+          <span>Raga</span>
+          <strong>Behaviour before scale</strong>
+          <em>Sa/home, time, phrase movement, emphasis and source-card guidance.</em>
+        </button>
+      </div>
+
+      <div class="field-card wide pitch-note-card">
+        <h3>2. Choose the home note</h3>
         <div class="note-grid" role="list" aria-label="Choose tonic note">
           ${keyRoots.map((note) => `
             <button type="button" class="note-button ${note === state.profile.keyRoot ? 'is-selected' : ''}" data-key-root="${escapeHtml(note)}">
@@ -270,34 +354,82 @@ function renderPitch() {
         </div>
       </div>
 
-      <div class="field-card">
-        <label><span>2. Choose the scale / mode</span>
-          <select data-profile="pitchWorld">${optionList(APP_OPTIONS.pitchWorlds, state.profile.pitchWorld)}</select>
-        </label>
-      </div>
+      ${path === 'scale' ? `
+        <div class="field-card wide pitch-choice-card">
+          <label><span>3. Choose the scale or mode</span>
+            <select data-profile="pitchWorld">${optionList(scaleWorlds, state.profile.pitchWorld)}</select>
+          </label>
+        </div>
 
-      <div class="field-card">
-        <label><span>Or choose a specific raga</span>
-          <select data-profile="selectedRaga">${optionList(ragas, state.profile.selectedRaga, 'No specific raga')}</select>
-        </label>
-      </div>
+        <div class="info-card wide pitch-guide">
+          <h3>Scale behaviour</h3>
+          <div class="pitch-detail-grid">
+            <div class="pitch-detail">
+              <span>Intervals</span>
+              <strong>${escapeHtml(intervals)}</strong>
+            </div>
+            <div class="pitch-detail">
+              <span>Notes in ${escapeHtml(keyLabel)}</span>
+              <strong>${escapeHtml(notes)}</strong>
+            </div>
+            <div class="pitch-detail">
+              <span>Home / drone</span>
+              <strong>Let ${escapeHtml(root)} stay underneath the guitar, bass or pad until the section feels centred.</strong>
+            </div>
+            <div class="pitch-detail">
+              <span>Try now</span>
+              <strong>${escapeHtml(pitchSummary.tip)}</strong>
+            </div>
+          </div>
+        </div>
+      ` : `
+        <div class="field-card wide pitch-choice-card">
+          <label><span>3. Choose the raga</span>
+            <select data-profile="selectedRaga">${optionList(ragas, state.profile.selectedRaga, 'Choose a raga')}</select>
+          </label>
+        </div>
 
-      <div class="info-card wide">
-        <h3>${state.profile.selectedRaga ? 'Raga behaviour' : 'Scale behaviour'}</h3>
-        ${selectedRaga ? `
-          <p>A raga is not just a scale. Treat ${escapeHtml(state.profile.keyRoot || '')} ${escapeHtml(selectedRaga.name)} as behaviour: ascent, descent, emphasis, phrase grammar, drone and mood.</p>
-          <ul>
-            <li><strong>Time / window:</strong> ${escapeHtml(selectedRaga.timeWindow || 'open')}</li>
-            <li><strong>Pitch reminder:</strong> ${escapeHtml(pitchSummary.detail)}</li>
-            <li>${escapeHtml(selectedRaga.note || pitchSummary.tip)}</li>
-          </ul>
-        ` : `
-          <p>${escapeHtml(pitchSummary.detail)}</p>
-          <ul>
-            <li>${escapeHtml(pitchSummary.tip)}</li>
-          </ul>
-        `}
-      </div>
+        <div class="info-card wide pitch-guide">
+          <h3>${selectedRaga ? 'Raga behaviour' : 'Choose the raga behaviour'}</h3>
+          ${selectedRaga ? `
+            <p>A raga is not just a scale. In ${escapeHtml(keyLabel)}, use ${escapeHtml(root)} as Sa/home and let the source card guide ascent, descent, emphasis, phrase endings and mood.</p>
+            <div class="pitch-detail-grid">
+              <div class="pitch-detail">
+                <span>Common intervals</span>
+                <strong>${escapeHtml(intervals)}</strong>
+              </div>
+              <div class="pitch-detail">
+                <span>Common notes from ${escapeHtml(root)} as Sa</span>
+                <strong>${escapeHtml(notes)}</strong>
+              </div>
+              <div class="pitch-detail">
+                <span>Time / window</span>
+                <strong>${escapeHtml(cleanTimeWindow(ragaInfo?.timeWindow))}</strong>
+              </div>
+              <div class="pitch-detail">
+                <span>Drone / home</span>
+                <strong>Hold ${escapeHtml(root)} as Sa. Let bass, tanpura-style pad or guitar harmonics return there often.</strong>
+              </div>
+            </div>
+            <ul class="pitch-feature-list">
+              ${ragaBehaviour.map((feature) => `<li>${escapeHtml(feature)}</li>`).join('')}
+            </ul>
+            ${sourceLine ? `<p class="source-line">${escapeHtml(sourceLine)}</p>` : ''}
+          ` : `
+            <p>Choose a raga, then this screen will show the combined key world, a common note reference from ${escapeHtml(root)}, the time window and the practical behaviour reminders.</p>
+            <div class="pitch-detail-grid">
+              <div class="pitch-detail">
+                <span>Sa / home</span>
+                <strong>${escapeHtml(root)}</strong>
+              </div>
+              <div class="pitch-detail">
+                <span>Start here</span>
+                <strong>Use a drone or held bass on ${escapeHtml(root)} while choosing the raga.</strong>
+              </div>
+            </div>
+          `}
+        </div>
+      `}
     </div>
   `;
 }
@@ -454,8 +586,17 @@ function setProfileFromInput(input) {
     state.profile[name] = Number(input.value || 0);
   } else {
     state.profile[name] = input.value;
+    if (name === 'pitchWorld') {
+      state.profile.pitchPath = 'scale';
+      state.profile.selectedRaga = '';
+      normaliseScalePitchWorld();
+    }
+    if (name === 'selectedRaga') {
+      state.profile.pitchPath = 'raga';
+    }
   }
   renderSectionSummary();
+  renderStepStrip();
   refreshExportLinks();
   saveAppState();
 }
@@ -506,6 +647,21 @@ function bindEvents() {
   });
 
   els.wizardBody.addEventListener('click', (event) => {
+    const pitchPathButton = event.target.closest('[data-pitch-path]');
+    if (pitchPathButton) {
+      state.profile.pitchPath = pitchPathButton.dataset.pitchPath;
+      if (state.profile.pitchPath === 'scale') {
+        state.profile.selectedRaga = '';
+        normaliseScalePitchWorld();
+      }
+      renderBody();
+      renderSectionSummary();
+      renderStepStrip();
+      refreshExportLinks();
+      saveAppState();
+      return;
+    }
+
     const keyRoot = event.target.closest('[data-key-root]');
     if (keyRoot) {
       state.profile.keyRoot = keyRoot.dataset.keyRoot;

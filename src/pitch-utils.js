@@ -15,6 +15,24 @@ const NOTE_TO_PC = new Map([
   ['B', 11],
 ]);
 
+const INTERVAL_TO_SEMITONE = {
+  '1': 0,
+  '♭2': 1,
+  '2': 2,
+  '♯2': 3,
+  '♭3': 3,
+  '3': 4,
+  '4': 5,
+  '♯4': 6,
+  '♭5': 6,
+  '5': 7,
+  '♯5': 8,
+  '♭6': 8,
+  '6': 9,
+  '♭7': 10,
+  '7': 11,
+};
+
 const SCALE_LIBRARY = {
   Ionian: {
     intervals: ['1', '2', '3', '4', '5', '6', '7'],
@@ -108,13 +126,120 @@ const SCALE_LIBRARY = {
   },
 };
 
+const RAGA_REFERENCE_LIBRARY = {
+  'Ahir bhairav': {
+    intervals: ['1', '♭2', '3', '4', '5', '6', '♭7'],
+    note: 'Common reference: Bhairav-like flat Re with a softer flat Ni colour.',
+  },
+  Asavari: {
+    intervals: ['1', '2', '♭3', '4', '5', '♭6', '♭7'],
+    note: 'Common reference: natural Re with flat Ga, Dha and Ni.',
+  },
+  Bageshri: {
+    intervals: ['1', '2', '♭3', '4', '5', '6', '♭7'],
+    note: 'Common reference: flat Ga and flat Ni, with Pa often treated carefully.',
+  },
+  Bhairav: {
+    intervals: ['1', '♭2', '3', '4', '5', '♭6', '7'],
+    note: 'Common reference: flat Re and flat Dha give the serious morning colour.',
+  },
+  Bhairavi: {
+    intervals: ['1', '♭2', '♭3', '4', '5', '♭6', '♭7'],
+    note: 'Common reference: the full minor-colour set with flat Re, Ga, Dha and Ni.',
+    timeWindow: 'Morning; often used as a closing raga.',
+  },
+  Bhupali: {
+    intervals: ['1', '2', '3', '5', '6'],
+    note: 'Common reference: a clear five-note major colour with no Ma or Ni.',
+  },
+  Durga: {
+    intervals: ['1', '2', '4', '5', '6'],
+    note: 'Common reference: a five-note colour with no Ga or Ni.',
+  },
+  Hansadhvani: {
+    intervals: ['1', '2', '3', '5', '7'],
+    note: 'Common reference: a bright five-note colour with a strong leading tone.',
+  },
+  Hindol: {
+    intervals: ['1', '♭3', '♯4', '♭6', '7'],
+    note: 'Common reference: a spare five-note colour with no Re or Pa.',
+  },
+  Kafi: {
+    intervals: ['1', '2', '♭3', '4', '5', '6', '♭7'],
+    note: 'Common reference: Dorian-like, with flat Ga and flat Ni.',
+  },
+  Khamaj: {
+    intervals: ['1', '2', '3', '4', '5', '6', '♭7'],
+    note: 'Common reference: major colour with flat Ni often important in descent.',
+  },
+  Kirvani: {
+    intervals: ['1', '2', '♭3', '4', '5', '♭6', '7'],
+    note: 'Common reference: harmonic-minor colour.',
+  },
+  Malkauns: {
+    intervals: ['1', '♭3', '4', '♭6', '♭7'],
+    note: 'Common reference: a deep five-note colour with no Re or Pa.',
+  },
+  Marva: {
+    intervals: ['1', '♭2', '3', '♯4', '6', '7'],
+    note: 'Common reference: no Pa; flat Re and sharp Ma create the tension.',
+  },
+  'Miyan ki todi': {
+    intervals: ['1', '♭2', '♭3', '♯4', '5', '♭6', '7'],
+    note: 'Common reference: flat Re, flat Ga, sharp Ma and flat Dha.',
+  },
+  Puriya: {
+    intervals: ['1', '♭2', '3', '♯4', '6', '7'],
+    note: 'Common reference: no Pa; flat Re and sharp Ma shape the colour.',
+  },
+  Purvi: {
+    intervals: ['1', '♭2', '3', '♯4', '5', '♭6', '7'],
+    note: 'Common reference: flat Re, sharp Ma and flat Dha.',
+  },
+  Yaman: {
+    intervals: ['1', '2', '3', '♯4', '5', '6', '7'],
+    note: 'Common reference: major colour with sharp Ma.',
+  },
+};
+
+function notesFromIntervals(root, intervals = []) {
+  const rootPc = NOTE_TO_PC.get(root);
+  if (rootPc === undefined) return [];
+  return intervals
+    .map((interval) => INTERVAL_TO_SEMITONE[interval])
+    .filter((value) => value !== undefined)
+    .map((offset) => NOTE_LABELS[(rootPc + offset) % 12]);
+}
+
+function pitchPath(profile = {}) {
+  return profile.pitchPath || (profile.selectedRaga ? 'raga' : 'scale');
+}
+
+function cleanRagaLine(value = '') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (text.length > 140) return '';
+  const musicalChars = (text.match(/[SRGMPDNSrgmpdns]/g) || []).length;
+  const letters = (text.match(/[A-Za-z]/g) || []).length;
+  if (musicalChars < 4 || musicalChars / Math.max(letters, 1) < 0.45) return '';
+  return text
+    .replace(/S/g, 'Sa ')
+    .replace(/R/g, 'Re ')
+    .replace(/G/g, 'Ga ')
+    .replace(/M/g, 'Ma ')
+    .replace(/P/g, 'Pa ')
+    .replace(/D/g, 'Dha ')
+    .replace(/N/g, 'Ni ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function getScaleInfo(profile = {}) {
   const root = profile.keyRoot || 'D';
   const scale = profile.pitchWorld || 'Dorian';
   const formula = SCALE_LIBRARY[scale];
-  const rootPc = NOTE_TO_PC.get(root);
 
-  if (!formula || rootPc === undefined || profile.selectedRaga) {
+  if (!formula || pitchPath(profile) === 'raga') {
     return null;
   }
 
@@ -123,24 +248,77 @@ export function getScaleInfo(profile = {}) {
     root,
     scale,
     intervals: formula.intervals,
-    notes: formula.semitones.map((offset) => NOTE_LABELS[(rootPc + offset) % 12]),
+    notes: notesFromIntervals(root, formula.intervals),
     feel: formula.feel,
   };
 }
 
+export function getRagaInfo(profile = {}, ragaCard = null) {
+  const root = profile.keyRoot || 'D';
+  const name = profile.selectedRaga || '';
+  const reference = RAGA_REFERENCE_LIBRARY[name] || null;
+  const intervals = reference?.intervals || null;
+  const notes = intervals ? notesFromIntervals(root, intervals) : null;
+  const sourceAscentDescent = cleanRagaLine(ragaCard?.ascentDescent);
+  const sourceOutline = cleanRagaLine(ragaCard?.melodicOutline);
+
+  if (!name) {
+    return {
+      label: `${root} raga`,
+      root,
+      name: '',
+      intervals: null,
+      notes: null,
+      timeWindow: '',
+      sourceAscentDescent: '',
+      sourceOutline: '',
+      referenceNote: '',
+      reminder: `Choose a raga, then treat ${root} as Sa/home.`,
+      features: [],
+    };
+  }
+
+  return {
+    label: `${root} ${name}`,
+    root,
+    name,
+    intervals,
+    notes,
+    timeWindow: reference?.timeWindow || ragaCard?.timeWindow || '',
+    sourceAscentDescent,
+    sourceOutline,
+    referenceNote: reference?.note || '',
+    reminder: `Treat ${root} as Sa/home. Use the raga card for ascent, descent, important notes and phrase behaviour before adding extra notes.`,
+    features: (ragaCard?.keyFeatures || []).slice(0, 3),
+  };
+}
+
+export function getSargamReference(root = 'D') {
+  const intervals = ['1', '2', '3', '4', '5', '6', '7'];
+  const names = ['Sa', 'Re', 'Ga', 'Ma', 'Pa', 'Dha', 'Ni'];
+  const notes = notesFromIntervals(root, intervals);
+  return names.map((name, index) => ({
+    name,
+    interval: intervals[index],
+    note: notes[index],
+  }));
+}
+
 export function getPitchContext(profile = {}, ragaCard = null) {
   const root = profile.keyRoot || 'D';
-  if (profile.selectedRaga) {
+  if (pitchPath(profile) === 'raga') {
+    const ragaInfo = getRagaInfo(profile, ragaCard);
     return {
       type: 'raga',
-      label: `${root} ${profile.selectedRaga}`,
+      label: ragaInfo.label,
       root,
-      name: profile.selectedRaga,
-      notes: null,
-      intervals: null,
-      feel: ragaCard?.timeWindow ? `time window: ${ragaCard.timeWindow}` : 'behaviour-led',
-      reminder: `Treat ${root} as Sa/home. Use the raga card for ascent, descent, important notes and phrase behaviour before adding extra notes.`,
-      features: (ragaCard?.keyFeatures || []).slice(0, 2),
+      name: ragaInfo.name,
+      notes: ragaInfo.notes,
+      intervals: ragaInfo.intervals,
+      feel: ragaInfo.timeWindow ? `time window: ${ragaInfo.timeWindow}` : 'behaviour-led',
+      reminder: ragaInfo.reminder,
+      features: ragaInfo.features,
+      ragaInfo,
     };
   }
 
@@ -177,10 +355,14 @@ export function formatPitchSummary(profile = {}, ragaCard = null) {
     };
   }
   if (context.type === 'raga') {
+    const ragaInfo = context.ragaInfo || getRagaInfo(profile, ragaCard);
+    const pitchLine = ragaInfo.intervals && ragaInfo.notes
+      ? `Common pitch reference: ${ragaInfo.intervals.join(' - ')}. Notes from ${ragaInfo.root} as Sa: ${ragaInfo.notes.join(', ')}.`
+      : `Sargam reference from ${ragaInfo.root}: ${getSargamReference(ragaInfo.root).map((item) => `${item.name}=${item.note}`).join(', ')}. The source card decides which forms are used.`;
     return {
       heading: context.label,
-      detail: context.reminder,
-      tip: ragaCard?.note || 'Use the raga as a behaviour card, not just a scale list.',
+      detail: pitchLine,
+      tip: ragaInfo.referenceNote || ragaCard?.note || 'Use the raga as a behaviour card, not just a scale list.',
     };
   }
   return {

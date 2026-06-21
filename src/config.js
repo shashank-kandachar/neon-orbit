@@ -60,6 +60,7 @@ export const APP_OPTIONS = {
 };
 
 export const DEFAULT_PROFILE = {
+  pitchPath: 'scale',
   keyRoot: 'D',
   pitchWorld: 'Dorian',
   selectedRaga: '',
