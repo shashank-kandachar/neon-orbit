@@ -1,3 +1,5 @@
+import { ideaClarityScore, ideaIsUsable, normaliseIdeaPromptKey } from './idea-presenter.js?v=keyfirst3.10';
+
 const ENERGY_ALIASES = {
   'low': ['low', 'quiet', 'intimate', 'subtle', 'ambient'],
   'low to medium': ['low_to_medium', 'low to medium', 'subtle', 'reflective'],
@@ -146,8 +148,9 @@ export function scoreIdea(idea, profile, stageId, { inspiration = false } = {}) 
   score += instrumentScore(idea, profile);
   score += appSlotScore(idea);
   score += qualityScore(idea);
+  score += ideaClarityScore(idea);
   if (!inspiration && (blob.includes('psychedelic') || blob.includes('ambient') || blob.includes('trance') || blob.includes('drone'))) score += 2;
-  if (inspiration) score += Math.floor(Math.random() * 12);
+  if (inspiration) score += Math.floor(Math.random() * 34);
   return score;
 }
 
@@ -156,6 +159,7 @@ export function generateStagePrompts(ideas, profile, stageId, plan = {}, options
   const selectedIds = new Set(Object.values(plan).filter(Boolean).map((entry) => entry.id));
   const candidates = ideas
     .filter(hasPromptText)
+    .filter(ideaIsUsable)
     .map((idea) => ({ ...idea, _score: scoreIdea(idea, profile, stageId, { inspiration }) }))
     .filter((idea) => !selectedIds.has(idea.id))
     .filter((idea) => idea._score >= (inspiration ? 18 : 24));
@@ -164,16 +168,29 @@ export function generateStagePrompts(ideas, profile, stageId, plan = {}, options
 
   const picked = [];
   const sourceUsage = new Map();
+  const promptUsage = new Set();
   for (const idea of candidates) {
+    const promptKey = normaliseIdeaPromptKey(idea);
+    if (!promptKey || promptUsage.has(promptKey)) continue;
     const current = sourceUsage.get(idea.sourceBook) || 0;
     if (current >= 2 && picked.length < 10) continue;
     picked.push(idea);
+    promptUsage.add(promptKey);
     sourceUsage.set(idea.sourceBook, current + 1);
     if (picked.length >= 6) break;
   }
 
   if (!picked.length) {
-    return ideas.filter(hasPromptText).slice(0, 6);
+    const fallback = [];
+    const fallbackUsage = new Set();
+    for (const idea of ideas.filter(hasPromptText).filter(ideaIsUsable)) {
+      const promptKey = normaliseIdeaPromptKey(idea);
+      if (!promptKey || fallbackUsage.has(promptKey)) continue;
+      fallback.push(idea);
+      fallbackUsage.add(promptKey);
+      if (fallback.length >= 6) break;
+    }
+    return fallback;
   }
   return picked;
 }
@@ -197,6 +214,6 @@ export function buildSectionSummary(profile, plan) {
     title: `${profile.sectionType || 'Section'} — ${profile.mood || 'Mood'} / ${keyLabel}`,
     subtitle: `${profile.tempo || 0} BPM · ${profile.groove || 'Groove'} · ${profile.instrument || 'Instrument'}`,
     completedStages: Object.keys(plan).length,
-    selectedPrompts: Object.values(plan).map((item) => item.prompt),
+    selectedPrompts: Object.values(plan).map((item) => item.friendly?.action || item.prompt),
   };
 }

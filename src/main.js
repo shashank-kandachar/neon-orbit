@@ -1,8 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.5';
-import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.5';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.5';
-import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js?v=keyfirst3.5';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.5';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.10';
+import { loadBootstrapData, loadIdeas } from './data-loader.js?v=keyfirst3.10';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.10';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.10';
+import { formatPitchSummary } from './pitch-utils.js?v=keyfirst3.10';
+import { loadState, saveState, clearState, savePlanSnapshot } from './storage.js?v=keyfirst3.10';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.10';
 
 const SETUP_SCREENS = [
   { id: 'start', type: 'start', label: 'Start', blurb: 'A calm start before the app serves prompts.' },
@@ -110,14 +112,34 @@ function selectedBuildCount() {
   return Object.keys(state.plan).length;
 }
 
+function enrichedPlan() {
+  return Object.fromEntries(Object.entries(state.plan).map(([stageId, idea]) => [
+    stageId,
+    idea?.friendly ? idea : {
+      ...idea,
+      friendly: ideaPresentation(idea, stageId),
+    },
+  ]));
+}
+
 function payload() {
+  const plan = enrichedPlan();
   return {
     id: `section_${Date.now()}`,
     createdAt: new Date().toISOString(),
     profile: state.profile,
-    summary: buildSectionSummary(state.profile, state.plan),
-    plan: state.plan,
+    summary: buildSectionSummary(state.profile, plan),
+    plan,
   };
+}
+
+function selectedRagaCard() {
+  if (!state.profile.selectedRaga) return null;
+  return state.bootstrap?.ragaData?.cards?.find((card) => card.name === state.profile.selectedRaga) || null;
+}
+
+function ideaPresentation(idea, stageId = currentScreen().id) {
+  return idea.friendly || buildIdeaPresentation(idea, state.profile, stageId, { ragaCard: selectedRagaCard() });
 }
 
 function refreshExportLinks() {
@@ -181,7 +203,8 @@ function renderPlanSummary() {
   els.planSummary.innerHTML = STAGES.map((stage) => {
     const item = state.plan[stage.id];
     if (!item) return '';
-    return `<div class="mini-card"><span>${escapeHtml(stage.label)}</span><p>${escapeHtml(item.prompt)}</p></div>`;
+    const presentation = ideaPresentation(item, stage.id);
+    return `<div class="mini-card"><span>${escapeHtml(stage.label)}</span><p>${escapeHtml(presentation.action)}</p></div>`;
   }).join('');
 }
 
@@ -196,7 +219,8 @@ function renderTracePanel() {
       <span>Book ${item.bookNumber}</span>
       <h3>${escapeHtml(item.sourceBook || 'Unknown source')}</h3>
       <p>${escapeHtml(item.sourceAuthor || '')}</p>
-      <p style="margin-top:10px">${escapeHtml(item.prompt)}</p>
+      ${item.friendly?.action ? `<p style="margin-top:10px"><strong>Shown as:</strong> ${escapeHtml(item.friendly.action)}</p>` : ''}
+      <p style="margin-top:10px"><strong>Original source wording:</strong> ${escapeHtml(item.prompt)}</p>
       <div class="chips" style="margin-top:10px">
         ${(item.domainHints || []).slice(0, 5).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}
         ${(item.gearHints || []).slice(0, 4).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}
@@ -222,6 +246,7 @@ function renderStart() {
 function renderPitch() {
   const ragas = state.bootstrap.ragaData.cards.map((card) => card.name);
   const selectedRaga = state.bootstrap.ragaData.cards.find((card) => card.name === state.profile.selectedRaga);
+  const pitchSummary = formatPitchSummary(state.profile, selectedRaga);
   const keyRoots = APP_OPTIONS.keyRoots || ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
   const scaleLabel = state.profile.selectedRaga ? state.profile.selectedRaga : state.profile.pitchWorld;
   const keyLabel = `${state.profile.keyRoot || '—'} ${scaleLabel || ''}`.trim();
@@ -263,10 +288,14 @@ function renderPitch() {
           <p>A raga is not just a scale. Treat ${escapeHtml(state.profile.keyRoot || '')} ${escapeHtml(selectedRaga.name)} as behaviour: ascent, descent, emphasis, phrase grammar, drone and mood.</p>
           <ul>
             <li><strong>Time / window:</strong> ${escapeHtml(selectedRaga.timeWindow || 'open')}</li>
-            <li>${escapeHtml((selectedRaga.keyFeatures || [])[0] || selectedRaga.note || 'Use the raga as a behavioural card.')}</li>
+            <li><strong>Pitch reminder:</strong> ${escapeHtml(pitchSummary.detail)}</li>
+            <li>${escapeHtml(selectedRaga.note || pitchSummary.tip)}</li>
           </ul>
         ` : `
-          <p>Use ${escapeHtml(keyLabel)} as the tonal centre. Let the scale suggest the bass root, drone note, guitar comfort zones and synth patch colour.</p>
+          <p>${escapeHtml(pitchSummary.detail)}</p>
+          <ul>
+            <li>${escapeHtml(pitchSummary.tip)}</li>
+          </ul>
         `}
       </div>
     </div>
@@ -343,17 +372,25 @@ async function refreshPrompts({ inspiration = false } = {}) {
 }
 
 function renderPromptCard(idea, index) {
+  const presentation = ideaPresentation(idea);
   return `
     <article class="prompt-card ${index === 0 ? 'featured' : ''}">
-      <div class="chips">
-        <span class="chip">Book ${idea.bookNumber}</span>
-        <span class="chip">${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
-        <span class="chip">${escapeHtml(idea.energy || 'energy open')}</span>
-        ${idea._score ? `<span class="chip">match ${idea._score}</span>` : ''}
+      <div class="prompt-topline">
+        <span class="mini-label">${escapeHtml(presentation.title)}</span>
+        <div class="chips">
+          ${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}
+        </div>
       </div>
-      <p class="prompt-text">${escapeHtml(idea.prompt)}</p>
-      <div class="chips">${(idea.instrumentFocus || []).slice(0, 3).map((x) => `<span class="chip">${escapeHtml(x)}</span>`).join('')}</div>
-      <div class="prompt-actions"><button class="btn primary small" data-use="${escapeHtml(idea.id)}">Use this</button><button class="btn small" data-source="${escapeHtml(idea.id)}">Source</button></div>
+      <p class="prompt-text">${escapeHtml(presentation.action)}</p>
+      <ol class="prompt-steps">
+        ${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
+      </ol>
+      ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
+      <div class="prompt-footer">
+        <span>${escapeHtml(presentation.sourceLine)}</span>
+        ${idea._score ? `<span>match ${idea._score}</span>` : ''}
+      </div>
+      <div class="prompt-actions"><button class="btn primary small" data-use="${escapeHtml(idea.id)}">Use this</button><button class="btn small" data-refresh="another">Another</button><button class="btn small" data-source="${escapeHtml(idea.id)}">Source</button></div>
     </article>
   `;
 }
@@ -362,14 +399,23 @@ function renderBuild() {
   const screen = currentScreen();
   const chosen = state.plan[screen.id];
   if (chosen) {
+    const presentation = ideaPresentation(chosen, screen.id);
     els.wizardBody.innerHTML = `
-      <div class="info-card wide"><h3>Chosen for this step</h3><p class="prompt-text" style="margin-top:8px">${escapeHtml(chosen.prompt)}</p><div class="chips" style="margin-top:10px"><span class="chip">Book ${chosen.bookNumber}</span><span class="chip">${escapeHtml(chosen.sourceBook || '')}</span></div><div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(chosen.id)}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(screen.id)}">Choose again</button></div></div>
+      <div class="info-card wide">
+        <span class="mini-label">Chosen for this step</span>
+        <h3>${escapeHtml(presentation.title)}</h3>
+        <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
+        <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
+        ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
+        <div class="chips" style="margin-top:10px">${presentation.tags.map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
+        <div class="prompt-actions" style="margin-top:14px"><button class="btn small" data-source="${escapeHtml(chosen.id)}">Source</button><button class="btn danger small" data-rechoose="${escapeHtml(screen.id)}">Another idea</button></div>
+      </div>
     `;
     return;
   }
   if (!state.prompts.length) {
     els.wizardBody.innerHTML = `
-      <div class="info-card wide"><h3>Ready for prompts</h3><p>The app will show only three options for this step.</p><div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal">Show prompts</button></div></div>
+      <div class="info-card wide"><h3>Ready for prompts</h3><p>The app will show only three plain-language ideas for this step.</p><div class="prompt-actions" style="margin-top:14px"><button class="btn primary" data-refresh="normal">Show ideas</button></div></div>
     `;
     return;
   }
@@ -472,14 +518,18 @@ function bindEvents() {
     }
 
     const refresh = event.target.closest('[data-refresh]');
-    if (refresh) return refreshPrompts();
+    if (refresh) return refreshPrompts({ inspiration: refresh.dataset.refresh !== 'normal' });
 
     const use = event.target.closest('[data-use]');
     if (use) {
       const idea = state.prompts.find((item) => item.id === use.dataset.use);
       if (!idea) return;
-      state.plan[currentScreen().id] = idea;
-      state.traceIdea = idea;
+      const enrichedIdea = {
+        ...idea,
+        friendly: ideaPresentation(idea),
+      };
+      state.plan[currentScreen().id] = enrichedIdea;
+      state.traceIdea = enrichedIdea;
       state.prompts = [];
       renderAll();
       saveAppState();
@@ -488,7 +538,11 @@ function bindEvents() {
 
     const source = event.target.closest('[data-source]');
     if (source) {
-      state.traceIdea = findVisibleIdea(source.dataset.source);
+      const sourceIdea = findVisibleIdea(source.dataset.source);
+      state.traceIdea = sourceIdea ? {
+        ...sourceIdea,
+        friendly: sourceIdea.friendly || ideaPresentation(sourceIdea),
+      } : null;
       renderTracePanel();
       saveAppState();
       return;
@@ -518,9 +572,16 @@ function bindEvents() {
     const ok = await ensureIdeasLoaded();
     if (!ok) return;
     const results = searchIdeas(state.ideas, els.searchInput.value, {}).slice(0, 8);
-    els.searchResults.innerHTML = results.length ? results.map((idea) => `
-      <div class="result-card"><span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span><p>${escapeHtml(idea.prompt)}</p></div>
-    `).join('') : `<div class="result-card muted-box">No results.</div>`;
+    els.searchResults.innerHTML = results.length ? results.map((idea) => {
+      const presentation = ideaPresentation(idea, idea.stageBucket || currentScreen().id);
+      return `
+        <div class="result-card">
+          <span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
+          <p>${escapeHtml(presentation.action)}</p>
+          <div class="chips" style="margin-top:8px">${presentation.tags.slice(0, 4).map((tag) => `<span class="chip idea-tag">${escapeHtml(tag)}</span>`).join('')}</div>
+        </div>
+      `;
+    }).join('') : `<div class="result-card muted-box">No results.</div>`;
   });
 }
 

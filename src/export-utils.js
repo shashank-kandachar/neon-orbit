@@ -71,12 +71,19 @@ export function exportPlanMarkdown(payload, stages, trigger) {
     const item = payload.plan[stage.id];
     if (!item) return;
     lines.push(`### ${stage.label}`);
-    lines.push(item.prompt);
+    lines.push(item.friendly?.action || item.prompt);
     lines.push('');
+    if (item.friendly?.steps?.length) {
+      item.friendly.steps.forEach((step) => lines.push(`- ${step}`));
+      lines.push('');
+    }
+    if (item.friendly?.pitchTip) lines.push(`- **Pitch note:** ${item.friendly.pitchTip}`);
+    if (item.friendly?.tags?.length) lines.push(`- **Idea tags:** ${item.friendly.tags.join(', ')}`);
     if (item.neonOrbitUse) lines.push(`- **Neon Orbit use:** ${item.neonOrbitUse}`);
     if (item.instrumentFocus?.length) lines.push(`- **Instrument focus:** ${item.instrumentFocus.join(', ')}`);
     if (item.domainHints?.length) lines.push(`- **Domains:** ${item.domainHints.join(', ')}`);
     lines.push(`- **Source:** Book ${item.bookNumber} — ${item.sourceBook} (${item.sourceAuthor})`);
+    lines.push(`- **Original wording:** ${item.prompt}`);
     lines.push('');
   });
   downloadFile('neon-orbit-section-plan.md', lines.join('\n'), 'text/markdown', trigger);
