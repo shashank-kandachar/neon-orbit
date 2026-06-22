@@ -1129,8 +1129,16 @@ button.entry-card {
 .song-start-screen {
   min-height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
+}
+
+.song-choice-only {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
 }
 
 .song-start-choices {
@@ -1140,7 +1148,10 @@ button.entry-card {
 }
 
 .start-choice-card {
-  min-height: 160px;
+  min-height: 220px;
+  display: grid;
+  align-content: center;
+  gap: 10px;
 }
 
 .start-choice-card > strong {
@@ -1151,6 +1162,10 @@ button.entry-card {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
+}
+
+.existing-entry-choice {
+  background: rgba(255,255,255,0.045);
 }
 
 .song-library-card {
@@ -1919,6 +1934,7 @@ button.entry-card {
     flex: 1 1 auto;
   }
   .song-entry,
+  .song-choice-only,
   .song-start-choices,
   .song-library-columns,
   .setup-workspace {

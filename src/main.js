@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.57';
-import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.57';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.57';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.57';
-import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.57';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.57';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.57';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.59';
+import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.59';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.59';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.59';
+import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.59';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.59';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.59';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -545,6 +545,7 @@ const state = {
   searchResults: [],
   traceIdea: null,
   lastSelectedRaga: '',
+  songEntryMode: 'choice',
   utilityPanel: 'section',
 };
 
@@ -1946,27 +1947,26 @@ function renderSongEntry() {
       <em>${escapeHtml(section.updatedAt ? `Updated ${new Date(section.updatedAt).toLocaleDateString('en-GB')}` : 'Saved locally')}</em>
     </button>
   `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`;
-  els.wizardBody.innerHTML = `
-    <div class="song-start-screen">
-      <section class="song-start-choices">
+  if (state.songEntryMode !== 'existing') {
+    els.wizardBody.innerHTML = `
+      <div class="song-choice-only">
         <button type="button" class="entry-card start-choice-card primary-entry" data-new-song>
           <span class="mini-label">Start fresh</span>
           <strong>New Song</strong>
-          <em>Begin with key, pulse and one useful section.</em>
+          <em>Begin a new track idea from key, pulse and one useful section.</em>
         </button>
+        <button type="button" class="entry-card start-choice-card existing-entry-choice" data-show-existing-song>
+          <span class="mini-label">Keep working</span>
+          <strong>Existing Song</strong>
+          <em>Open saved sections, resume the current idea, or arrange a track map.</em>
+        </button>
+      </div>
+    `;
+    return;
+  }
 
-        <div class="entry-card start-choice-card existing-entry">
-          <div class="entry-card-head">
-            <div>
-              <span class="mini-label">Keep working</span>
-              <strong>Existing Song</strong>
-              <em>Resume the current section or open a saved one.</em>
-            </div>
-          </div>
-          ${renderCurrentSectionResume() || `<div class="mini-card muted-box">No active section yet. Open a saved section below or start fresh.</div>`}
-        </div>
-      </section>
-
+  els.wizardBody.innerHTML = `
+    <div class="song-start-screen">
       <section class="entry-card song-library-card">
         <div class="song-flow-head">
           <label class="song-title-field">
@@ -1978,6 +1978,8 @@ function renderSongEntry() {
             <button type="button" class="btn small" data-open-panel="track">Track map</button>
           </div>
         </div>
+
+        ${renderCurrentSectionResume() || `<div class="mini-card muted-box">No active section yet. Open a saved section below or start a new section.</div>`}
 
         <div class="song-library-columns">
           <div class="song-section-panel">
@@ -2397,10 +2399,6 @@ function renderPromptCard(idea, index) {
       <div class="idea-card-grid">
         <div class="idea-main">
           ${renderPlayFirst(presentation)}
-          <div class="do-now">
-            <span>${escapeHtml(presentation.actionVerb || 'Try now')}</span>
-            <strong>${escapeHtml(presentation.doNow || 'Make the smallest playable version first.')}</strong>
-          </div>
           <p class="prompt-text">${escapeHtml(presentation.action)}</p>
           <ol class="prompt-steps">
             ${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
@@ -2457,10 +2455,6 @@ function renderBuild() {
           <div class="idea-card-grid">
             <div class="idea-main">
               ${renderPlayFirst(presentation)}
-              <div class="do-now">
-                <span>${escapeHtml(presentation.actionVerb || 'Try now')}</span>
-                <strong>${escapeHtml(presentation.doNow || 'Make the smallest playable version first.')}</strong>
-              </div>
               <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
               <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
             </div>
@@ -2633,6 +2627,7 @@ function showSourceForId(id) {
 }
 
 function startNewSong() {
+  state.songEntryMode = 'choice';
   state.song = createDraftSong();
   state.currentSectionId = null;
   state.profile = { ...DEFAULT_PROFILE };
@@ -2649,6 +2644,7 @@ function startNewSong() {
 }
 
 function startNewSectionForSong() {
+  state.songEntryMode = 'choice';
   state.currentSectionId = null;
   state.profile = {
     ...DEFAULT_PROFILE,
@@ -2722,6 +2718,7 @@ function openSavedSection(id) {
   state.promptMode = 'normal';
   state.traceIdea = null;
   state.screenIndex = 1;
+  state.songEntryMode = 'choice';
   renderAll();
   saveAppState();
 }
@@ -3014,6 +3011,14 @@ function bindEvents() {
     const newSong = event.target.closest('[data-new-song]');
     if (newSong) {
       startNewSong();
+      return;
+    }
+
+    const showExistingSong = event.target.closest('[data-show-existing-song]');
+    if (showExistingSong) {
+      state.songEntryMode = 'existing';
+      renderBody();
+      saveAppState();
       return;
     }
 

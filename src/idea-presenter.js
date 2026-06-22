@@ -1,4 +1,4 @@
-import { getPitchContext } from './pitch-utils.js?v=keyfirst3.57';
+import { getPitchContext } from './pitch-utils.js?v=keyfirst3.59';
 
 const STAGE_TITLES = {
   section_identity: 'Shape the feeling',
@@ -588,10 +588,66 @@ function cleanMaterial(value = '') {
   return `${clean.slice(0, 78).replace(/\s+\S*$/, '')}...`;
 }
 
-function extractMaterial(idea = {}, action = '') {
-  const sourceConcept = cleanMaterial(idea.sourceConcept || '');
+function pitchReplacementLabel(pitchContext) {
+  if (!pitchContext?.notes?.length) return 'the current note pool';
+  if (pitchContext.type === 'raga') return 'the selected raga notes';
+  return `${pitchContext.label} notes`;
+}
+
+const KEY_NOTE_TO_PC = {
+  C: 0,
+  'C#': 1,
+  'C♯': 1,
+  Db: 1,
+  'D♭': 1,
+  D: 2,
+  'D#': 3,
+  'D♯': 3,
+  Eb: 3,
+  'E♭': 3,
+  E: 4,
+  F: 5,
+  'F#': 6,
+  'F♯': 6,
+  Gb: 6,
+  'G♭': 6,
+  G: 7,
+  'G#': 8,
+  'G♯': 8,
+  Ab: 8,
+  'A♭': 8,
+  A: 9,
+  'A#': 10,
+  'A♯': 10,
+  Bb: 10,
+  'B♭': 10,
+  B: 11,
+};
+
+function noteTokenToPc(note = '') {
+  return KEY_NOTE_TO_PC[String(note || '').replace('♯', '#').replace('♭', 'b')];
+}
+
+function adaptKeyedSourcePhrases(text = '', pitchContext = null) {
+  if (!pitchContext?.notes?.length) return text;
+  const rootPc = noteTokenToPc(pitchContext.root);
+  const scaleName = normalise(pitchContext.name || pitchContext.label || '');
+  return String(text || '').replace(
+    /\b([A-G](?:#|b|♯|♭)?)[ -]+(blues|major|minor|dorian|phrygian|lydian|mixolydian|aeolian|pentatonic|scale|mode)\b/gi,
+    (match, sourceRoot, sourceScale) => {
+      const sourcePc = noteTokenToPc(sourceRoot);
+      const sourceScaleName = normalise(sourceScale);
+      const conflictsWithKey = sourcePc !== rootPc;
+      const conflictsWithWorld = pitchContext.type === 'raga' || (sourceScaleName && !scaleName.includes(sourceScaleName));
+      return conflictsWithKey || conflictsWithWorld ? pitchReplacementLabel(pitchContext) : match;
+    }
+  );
+}
+
+function extractMaterial(idea = {}, action = '', pitchContext = null) {
+  const sourceConcept = cleanMaterial(adaptKeyedSourcePhrases(idea.sourceConcept || '', pitchContext));
   if (sourceConcept && sourceConcept !== 'the idea') return sourceConcept;
-  const text = `${action || ''} ${idea.prompt || ''}`;
+  const text = adaptKeyedSourcePhrases(`${action || ''} ${idea.prompt || ''}`, pitchContext);
   const patterns = [
     /\baround ([^.;:]+)/i,
     /\busing ([^.;:]+)/i,
@@ -603,7 +659,7 @@ function extractMaterial(idea = {}, action = '') {
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match?.[1]) return cleanMaterial(match[1]);
+    if (match?.[1]) return cleanMaterial(adaptKeyedSourcePhrases(match[1], pitchContext));
   }
   return 'the core idea';
 }
@@ -611,7 +667,7 @@ function extractMaterial(idea = {}, action = '') {
 function stepContext(idea, profile, pitchContext, action) {
   const notes = pitchContext?.notes?.slice(0, 7).join(', ') || '';
   return {
-    material: extractMaterial(idea, action),
+    material: extractMaterial(idea, action, pitchContext),
     root: pitchContext?.root || profile.keyRoot || 'D',
     notes,
     keyLabel: pitchContext?.label || `${profile.keyRoot || 'D'} ${profile.pitchWorld || ''}`.trim(),
@@ -645,7 +701,7 @@ function directActionFromStage(idea, stageId, profile, pitchContext, action) {
     return `Choose a small note world for the ${section}. Start with ${material}.${noteLine} Make the home note feel settled before adding more notes.`;
   }
   if (stageId === 'tempo_groove' || stageId === 'rhythmic_foundation') {
-    return `Make a simple groove from ${material}. Keep the body-feel clear at ${ctx.tempo} BPM before adding detail.`;
+    return `Make a simple groove at ${ctx.tempo} BPM. Use one short rhythm, muted guitar pattern, drum hit or field sound as the thing that repeats.`;
   }
   if (stageId === 'bass_pulse') {
     return `Build the low end from ${material}. Start on ${ctx.root}, then use octave, fifth or one passing note only if the groove needs it.`;
@@ -678,6 +734,13 @@ function directActionFromStage(idea, stageId, profile, pitchContext, action) {
     return `Decide whether ${material} is useful enough to keep. Save the playable version and write the next recording move.`;
   }
   return `Use ${material} as one clear move for the ${section}. Make the smallest playable version first.`;
+}
+
+function makeStageActionPlain(action = '', stageId = '', profile = {}) {
+  if (stageId === 'tempo_groove' || stageId === 'rhythmic_foundation') {
+    return `Make a 4-bar groove at ${profile.tempo || 110} BPM. Start with one short rhythm, muted guitar note, drum hit or field sound, then leave deliberate gaps for the pulse to breathe.`;
+  }
+  return action;
 }
 
 function buildConceptNotes(idea = {}, action = '') {
@@ -799,6 +862,13 @@ function buildSteps(idea, stageId, profile, pitchContext, action, concepts) {
   const keyLabel = pitchContext?.label || `${profile.keyRoot || 'D'} ${profile.pitchWorld || ''}`.trim();
   const notes = pitchContext?.notes?.slice(0, 7).join(', ');
   const ctx = stepContext(idea, profile, pitchContext, action);
+  if (stageId === 'rhythmic_foundation' || stageId === 'tempo_groove') {
+    return [
+      `Make one loop at ${profile.tempo || 110} BPM.`,
+      `Let it lean towards ${profile.groove || 'a simple pulse'}.`,
+      'Use one short rhythm, muted guitar note, drum hit or field sound as the repeating answer.',
+    ];
+  }
   const conceptWithSteps = concepts.find((concept) => typeof concept.steps === 'function');
   if (conceptWithSteps) return conceptWithSteps.steps(ctx).slice(0, 4);
   const directiveSteps = directiveStepsFromAction(action, ctx);
@@ -837,13 +907,6 @@ function buildSteps(idea, stageId, profile, pitchContext, action, concepts) {
       `Hold ${profile.keyRoot || 'D'} as a drone or pedal tone.`,
       'Add one colour note above it, then listen before adding a chord.',
       'Keep the pad or guitar sustain quiet enough to leave room.',
-    ];
-  }
-  if (stageId === 'rhythmic_foundation' || stageId === 'tempo_groove') {
-    return [
-      `Make one loop at ${profile.tempo || 110} BPM.`,
-      `Let it lean towards ${profile.groove || 'a simple pulse'}.`,
-      `Use ${ctx.material} as the thing that repeats or answers the pulse.`,
     ];
   }
   if (stageId === 'texture_layer') {
@@ -967,7 +1030,7 @@ function buildPlayFirst(stageId, ctx) {
     },
     tempo_groove: {
       headline: `Build a 4-bar loop at ${pulseCue}.`,
-      detail: `Use ${material} as the thing that repeats, answers, or leaves space in the pulse.`,
+      detail: 'Use one short rhythm, muted note, drum hit or field sound as the thing that repeats, answers or leaves space.',
       check: 'The groove should make your body move before it has extra detail.',
     },
     section_role: {
@@ -977,7 +1040,7 @@ function buildPlayFirst(stageId, ctx) {
     },
     rhythmic_foundation: {
       headline: `Tap, mute-pick or program the main pulse for 4 bars at ${ctx.tempo} BPM.`,
-      detail: `Let ${material} answer the pulse without filling every gap.`,
+      detail: 'Let one simple sound answer the pulse without filling every gap.',
       check: 'Mute the extras; the rhythm should still feel held together.',
     },
     bass_pulse: {
@@ -1097,7 +1160,7 @@ function buildWhyHere(stageId, ctx) {
 
 export function buildIdeaPresentation(idea, profile, stageId, context = {}) {
   const pitchContext = getPitchContext(profile, context.ragaCard || null);
-  let action = simplifyPrompt(idea.prompt || '');
+  let action = makeStageActionPlain(adaptKeyedSourcePhrases(simplifyPrompt(idea.prompt || ''), pitchContext), stageId, profile);
   if (actionStillCryptic(action)) {
     action = directActionFromStage(idea, stageId, profile, pitchContext, action);
   }
