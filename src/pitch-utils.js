@@ -58,6 +58,36 @@ const INTERVAL_TO_SEMITONE = {
   '7': 11,
 };
 
+const NATURAL_NOTE_PC = {
+  C: 0,
+  D: 2,
+  E: 4,
+  F: 5,
+  G: 7,
+  A: 9,
+  B: 11,
+};
+
+const NOTE_LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+
+const INTERVAL_TO_DEGREE = {
+  '1': 1,
+  '♭2': 2,
+  '2': 2,
+  '♯2': 2,
+  '♭3': 3,
+  '3': 3,
+  '4': 4,
+  '♯4': 4,
+  '♭5': 5,
+  '5': 5,
+  '♯5': 5,
+  '♭6': 6,
+  '6': 6,
+  '♭7': 7,
+  '7': 7,
+};
+
 const SCALE_LIBRARY = {
   Ionian: {
     intervals: ['1', '2', '3', '4', '5', '6', '7'],
@@ -231,6 +261,32 @@ function noteLabelsFor(spelling = 'sharps') {
   return spelling === 'flats' ? NOTE_LABELS_FLAT : NOTE_LABELS_SHARP;
 }
 
+function accidentalForDifference(difference) {
+  if (difference === 0) return '';
+  if (difference === 1) return '#';
+  if (difference === 2) return '##';
+  if (difference === -1) return 'b';
+  if (difference === -2) return 'bb';
+  return null;
+}
+
+function spellNoteForInterval(root, interval) {
+  const rootPc = NOTE_TO_PC.get(root);
+  const offset = INTERVAL_TO_SEMITONE[interval];
+  const degree = INTERVAL_TO_DEGREE[interval];
+  const rootLetter = String(root || '').trim().charAt(0).toUpperCase();
+  const rootLetterIndex = NOTE_LETTERS.indexOf(rootLetter);
+  if (rootPc === undefined || offset === undefined || degree === undefined || rootLetterIndex < 0) return null;
+
+  const targetPc = (rootPc + offset) % 12;
+  const targetLetter = NOTE_LETTERS[(rootLetterIndex + degree - 1) % NOTE_LETTERS.length];
+  const naturalPc = NATURAL_NOTE_PC[targetLetter];
+  let difference = (targetPc - naturalPc + 12) % 12;
+  if (difference > 6) difference -= 12;
+  const accidental = accidentalForDifference(difference);
+  return accidental === null ? null : `${targetLetter}${accidental}`;
+}
+
 function inferSpelling(root = '', preferred = '') {
   if (preferred === 'flats' || preferred === 'sharps') return preferred;
   if (String(root).includes('b') || String(root).includes('♭')) return 'flats';
@@ -255,8 +311,8 @@ function notesFromIntervals(root, intervals = [], spelling = 'sharps') {
       const offset = INTERVAL_TO_SEMITONE[interval];
       if (offset === undefined) return null;
       const pc = (rootPc + offset) % 12;
-      if (interval.includes('♭')) return NOTE_LABELS_FLAT[pc];
-      if (interval.includes('♯') || interval.includes('#')) return NOTE_LABELS_SHARP[pc];
+      const intervalSpelling = spellNoteForInterval(root, interval);
+      if (intervalSpelling) return intervalSpelling;
       return noteLabelsFor(spelling)[pc];
     })
     .filter(Boolean);

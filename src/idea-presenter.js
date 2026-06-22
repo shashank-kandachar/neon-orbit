@@ -1,4 +1,4 @@
-import { getPitchContext } from './pitch-utils.js?v=keyfirst3.30';
+import { getPitchContext } from './pitch-utils.js?v=keyfirst3.55';
 
 const STAGE_TITLES = {
   section_identity: 'Shape the feeling',
@@ -56,6 +56,8 @@ const STAGE_TAGS = {
 
 const JARGON_REPLACEMENTS = [
   [/\btwelve[- ]tone row\b/gi, 'a 12-note pattern'],
+  [/\bserial technique\b/gi, 'strict note-order rule'],
+  [/\bserialism\b/gi, 'strict note-order writing'],
   [/\bnormalised amplitude\b/gi, 'even volume'],
   [/\bnormalized amplitude\b/gi, 'even volume'],
   [/\bamplitude\b/gi, 'volume'],
@@ -65,7 +67,12 @@ const JARGON_REPLACEMENTS = [
   [/\borganised sound\b/gi, 'a clear sound idea'],
   [/\borganized sound\b/gi, 'a clear sound idea'],
   [/\bcircuit noise texture\b/gi, 'noisy synth texture'],
+  [/\bcat[- ]sample sound world\b/gi, 'small sampled sound world'],
+  [/\blistening state\b/gi, 'mood you are listening from'],
+  [/\bmobile form\b/gi, 'a form that keeps moving'],
+  [/\bcent-scale thinking\b/gi, 'tiny tuning differences'],
   [/\bfragments becoming mantras\b/gi, 'a short fragment that starts to feel like a mantra'],
+  [/\bshort repeating pattern hypnosis\b/gi, 'a short hypnotic repeating pattern'],
   [/\bwithheld drop\b/gi, 'delayed drop'],
   [/\bParallel Harmony\b/g, 'Move the same chord shape in parallel'],
   [/\braga-rock\b/gi, 'raga-inspired'],
@@ -84,6 +91,7 @@ const JARGON_REPLACEMENTS = [
   [/\blistening situation\b/gi, 'place the listener is imagining'],
   [/\bcomposition constraint\b/gi, 'simple composition rule'],
   [/\bpitch outside conventional melody\b/gi, 'pitch used as colour instead of a normal tune'],
+  [/\boutside conventional melody\b/gi, 'as colour instead of a normal tune'],
   [/\btranslate pitch outside conventional melody\b/gi, 'use pitch as colour instead of a normal tune'],
   [/\blimited pitch cell\b/gi, 'a tiny group of notes'],
   [/\bpitch cell\b/gi, 'small note group'],
@@ -96,6 +104,26 @@ const JARGON_REPLACEMENTS = [
   [/\bostinato\b/gi, 'short repeating pattern'],
   [/\blive drummer lock\b/gi, 'a drummer-like groove that locks in'],
   [/\bvocal or chant layer\b/gi, 'the vocal or chant layer'],
+  [/\bnegative practice\b/gi, 'repeating the part badly'],
+  [/\bbody message\b/gi, 'feel of the body'],
+  [/\bnervous system\b/gi, 'listening body'],
+  [/\bliturgical space\b/gi, 'ritual-like space'],
+  [/\bposter-like layering\b/gi, 'stacked colourful layers'],
+  [/\bimage-to-sound topic mapping\b/gi, 'turning an image idea into sound'],
+  [/\bmusical meaning through recognisable signs\b/gi, 'a recognisable musical signal'],
+  [/\bdonor topic or style component\b/gi, 'borrowed colour'],
+  [/\bsignifier\b/gi, 'recognisable sound clue'],
+  [/\bvisual cliché\b/gi, 'obvious visual reference'],
+  [/\blistener-state intention\b/gi, 'feeling you want the listener to enter'],
+  [/\bintegration device\b/gi, 'way to let the music settle'],
+  [/\boverdub ghost\b/gi, 'quiet ghost layer'],
+  [/\bcool-down\b/gi, 'energy release'],
+  [/\btrack-ending expansion\b/gi, 'ending that opens out'],
+  [/\bmemory rather than gimmick\b/gi, 'a memory-like sound, not a trick'],
+  [/\baltered states of consciousness\b/gi, 'altered listening states'],
+  [/\baudio-visual media\b/gi, 'sound and image work'],
+  [/\belectronic system\b/gi, 'Ableton or hardware chain'],
+  [/\bprimary focus\b/gi, 'main focus'],
   [/\bresample\b/gi, 'record the sound back into Ableton'],
   [/\bresampling\b/gi, 'recording the sound back into Ableton'],
   [/\bautomation\b/gi, 'movement over time'],
@@ -158,6 +186,17 @@ const CONCEPT_GLOSSARY = [
     ],
   },
   {
+    pattern: /\b12-note pattern\b|\btwelve[- ]tone\b|\bserial\b|\batonal\b/i,
+    term: 'Strict note-order rule',
+    meaning: 'A rule where the note order matters more than normal chord movement. You can use it gently by taking only a few notes from the order.',
+    tryThis: 'Choose four notes from the pattern and turn them into a riff before attempting all twelve.',
+    steps: (ctx) => [
+      ctx.notes ? `Choose four notes from ${ctx.notes} and put them in one fixed order.` : 'Choose four notes and put them in one fixed order.',
+      'Repeat that order as a riff, bass figure or synth line.',
+      'Change rhythm, octave or tone colour before changing the note order.',
+    ],
+  },
+  {
     pattern: /\bgamelan\b|\blistening model\b/i,
     term: 'Gamelan as listening model',
     meaning: 'Use gamelan as an interaction idea, not as a costume: parts listen, interlock and answer each other.',
@@ -166,6 +205,28 @@ const CONCEPT_GLOSSARY = [
       'Choose what each layer listens to: guitar answers drums, synth answers guitar, or Ableton answers both.',
       'Make one short interlocking pattern instead of one busy lead line.',
       'Use technology to change the relationship: delay, panning, filtering or clip timing.',
+    ],
+  },
+  {
+    pattern: /\bpitch used as colour\b|\bnormal tune\b|\bpitch as colour\b/i,
+    term: 'Pitch as colour',
+    meaning: 'The note does not need to behave like a singable melody. It can act like brightness, tension, shimmer or a return point.',
+    tryThis: 'Hold or repeat one note and change its sound before writing a new tune.',
+    steps: (ctx) => [
+      `Choose one note from ${ctx.keyLabel} and repeat or hold it.`,
+      'Change the sound with pickup, filter, delay, reverb, drive or envelope.',
+      'Add a second note only when the colour needs direction.',
+    ],
+  },
+  {
+    pattern: /\binterlock\b|\binterlocking\b|\banswer each other\b/i,
+    term: 'Interlocking parts',
+    meaning: 'Two simple parts share the rhythm instead of one part doing everything.',
+    tryThis: 'Let guitar play the gaps in the synth or drum pattern.',
+    steps: () => [
+      'Make one short rhythm with empty spaces.',
+      'Put a second part only in some of those spaces.',
+      'Mute either part to check that the groove still makes sense.',
     ],
   },
   {
@@ -338,13 +399,28 @@ function stripSourcePreamble(text) {
 }
 
 function applyGlossary(text) {
-  return JARGON_REPLACEMENTS.reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text);
+  return JARGON_REPLACEMENTS
+    .reduce((current, [pattern, replacement]) => current.replace(pattern, replacement), text)
+    .replace(/\bshort repeating pattern hypnosis\b/gi, 'a short hypnotic repeating pattern')
+    .replace(/\breal this track seed\b/gi, 'real section seed')
+    .replace(/\bthis track seed\b/gi, 'section seed');
 }
 
 function sentenceCase(text) {
   const clean = text.trim();
   if (!clean) return '';
   return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+function tidyReadableText(text = '') {
+  return String(text || '')
+    .replace(/\bthe the\b/gi, 'the')
+    .replace(/\ba a\b/gi, 'a')
+    .replace(/\ban an\b/gi, 'an')
+    .replace(/\ba an\b/gi, 'an')
+    .replace(/\ban a\b/gi, 'a')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function keepShort(text) {
@@ -363,6 +439,26 @@ function simplifyPrompt(rawPrompt = '') {
   let text = stripSourcePreamble(rawPrompt);
 
   text = text.replace(
+    /^Design a loop where creative restriction is repeated clearly enough to become identity, but shift register, how crowded it feels or tone colour every four bars\.?/i,
+    'Make a short loop with one obvious rule. Keep the rule, but every four bars move it higher or lower, make it thinner or fuller, or change the tone colour.'
+  );
+
+  text = text.replace(
+    /^Build a part around (.*?) as listening model: decide what the musician is listening for, what the listener should notice, and what the technology is actually changing\.?/i,
+    (_match, model) => `Use ${model} as an interaction idea. Decide what each layer listens to, what the listener should notice, and which effect or clip movement changes over time.`
+  );
+
+  text = text.replace(
+    /^Translate pitch outside conventional melody into a Neon Orbit (.*)$/i,
+    (_match, rest) => `Use pitch as colour instead of a normal tune in a ${rest}`
+  );
+
+  text = text.replace(
+    /^Create a Neon Orbit (.*?) from (.*?)$/i,
+    (_match, target, source) => `Make a ${target} from ${source}`
+  );
+
+  text = text.replace(
     /^(Write|Make|Develop) a part for (.*?) that uses (.*?) as a constraint, then make one deliberate exception near the end of the section\./i,
     (_match, verb, part, constraint) => `${verb} a simple ${part} part from ${constraint}. Near the end, break the pattern once so the ear wakes up.`
   );
@@ -379,6 +475,9 @@ function simplifyPrompt(rawPrompt = '') {
 
   text = applyGlossary(text);
   text = text
+    .replace(/\bthe the vocal or chant layer\b/gi, 'the vocal or chant layer')
+    .replace(/\bWork on the vocal or chant layer until attention becomes scattered; stop before repeating the part badly starts teaching the wrong feel of the body\.?/gi, 'Work on the vocal or chant layer only while it still feels focused. If it starts getting worse, pause, simplify, and return with a smaller move.')
+    .replace(/\bThe musical decision should emerge after the listening body has softened\.?/gi, 'Let the next musical move come from calm listening.')
     .replace(/Write a rule for composition helper based on (.*?):/i, (_match, rule) => `Use ${rule}:`)
     .replace(/Let one clear edit or mistake that becomes part of the sound guide/i, 'Let one clear edit or mistake become part of the sound and guide')
     .replace(/it may change only one of pitch, rhythm, brightness, how crowded it feels or space each phrase/gi, 'change only one thing each phrase: notes, rhythm, brightness, crowdedness or space')
@@ -397,8 +496,8 @@ function simplifyPrompt(rawPrompt = '') {
     .replace(/\butilise\b/gi, 'use')
     .replace(/\bprioritise\b/gi, 'focus on')
     .replace(/\bprioritize\b/gi, 'focus on')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/\s+/g, ' ');
+  text = tidyReadableText(text);
 
   return sentenceCase(keepShort(text));
 }
@@ -459,9 +558,10 @@ function cleanMaterial(value = '') {
     .replace(/\bthis track\b/gi, 'this part')
     .replace(/\s+/g, ' ')
     .trim();
-  if (!text) return 'the idea';
-  if (text.length <= 80) return text;
-  return `${text.slice(0, 78).replace(/\s+\S*$/, '')}...`;
+  const clean = tidyReadableText(text);
+  if (!clean) return 'the idea';
+  if (clean.length <= 80) return clean;
+  return `${clean.slice(0, 78).replace(/\s+\S*$/, '')}...`;
 }
 
 function extractMaterial(idea = {}, action = '') {
@@ -495,6 +595,65 @@ function stepContext(idea, profile, pitchContext, action) {
     groove: profile.groove || 'a simple pulse',
     sectionType: profile.sectionType || 'section',
   };
+}
+
+function actionStillCryptic(action = '') {
+  const text = normalise(action);
+  if (!text) return true;
+  if (action.length > 300) return true;
+  if (/\b(model|frame|discourse|methodology|taxonomy|nonlinear|formalise|conceptual)\b/i.test(action)) return true;
+  if (/\bdecide what the musician is listening for\b/i.test(action)) return true;
+  if (/\btechnology is actually changing\b/i.test(action)) return true;
+  let hits = 0;
+  for (const word of JARGON_WORDS) {
+    if (text.includes(word)) hits += 1;
+  }
+  return hits >= 2;
+}
+
+function directActionFromStage(idea, stageId, profile, pitchContext, action) {
+  const ctx = stepContext(idea, profile, pitchContext, action);
+  const material = ctx.material === 'the core idea' ? 'one small musical idea' : ctx.material;
+  const noteLine = ctx.notes ? ` Use ${ctx.notes} as the first note pool.` : '';
+  const section = ctx.sectionType.toLowerCase();
+
+  if (stageId === 'pitch_material') {
+    return `Choose a small note world for the ${section}. Start with ${material}.${noteLine} Make the home note feel settled before adding more notes.`;
+  }
+  if (stageId === 'tempo_groove' || stageId === 'rhythmic_foundation') {
+    return `Make a simple groove from ${material}. Keep the body-feel clear at ${ctx.tempo} BPM before adding detail.`;
+  }
+  if (stageId === 'bass_pulse') {
+    return `Build the low end from ${material}. Start on ${ctx.root}, then use octave, fifth or one passing note only if the groove needs it.`;
+  }
+  if (stageId === 'harmony_drone') {
+    return `Set a harmonic floor with ${material}. Hold ${ctx.root} as home, then add one colour note or chord tone above it.`;
+  }
+  if (stageId === 'motif_hook') {
+    return `Turn ${material} into a small hook. Make a short phrase you can sing or play twice without needing the screen.`;
+  }
+  if (stageId === 'texture_layer') {
+    return `Use ${material} as a texture layer. Keep it below the main idea so it adds air, grit or place without taking over.`;
+  }
+  if (stageId === 'movement_modulation') {
+    return `Make ${material} move over time. Choose one control, pedal or Ableton parameter and change it slowly over 4 or 8 bars.`;
+  }
+  if (stageId === 'arrangement_arc') {
+    return `Shape the ${section} with ${material}. Decide what enters, leaves or changes every 4 or 8 bars.`;
+  }
+  if (stageId === 'transitions') {
+    return `Use ${material} to make the handoff feel intentional. Create one cue that tells the next section to arrive.`;
+  }
+  if (stageId === 'mix_space') {
+    return `Make room for ${material}. Lower, mute or thin one competing layer before adding EQ or more effects.`;
+  }
+  if (stageId === 'live_translation') {
+    return `Make ${material} playable live. Choose what your hands perform, what Ableton triggers, and what stays automated.`;
+  }
+  if (stageId === 'finish_review') {
+    return `Decide whether ${material} is useful enough to keep. Save the playable version and write the next recording move.`;
+  }
+  return `Use ${material} as one clear move for the ${section}. Make the smallest playable version first.`;
 }
 
 function buildConceptNotes(idea = {}, action = '') {
@@ -554,6 +713,20 @@ export function deriveIdeaTags(idea = {}, stageId = '') {
     if (clean.includes('synth')) addTag(tags, 'synth');
     if (clean.includes('voice') || clean.includes('vocal')) addTag(tags, 'voice');
   }
+  const blob = normalise([
+    idea.prompt,
+    idea.neonOrbitUse,
+    idea.sourceConcept,
+    idea.category,
+    idea.useCase,
+    ...(idea.tags || []),
+  ].filter(Boolean).join(' '));
+  if (/\bdelay|reverb|filter|drive|distortion|slicer|reverse|effect\b/.test(blob)) addTag(tags, 'effects');
+  if (/\bsilence|space|room|air|reverb|wide|stereo\b/.test(blob)) addTag(tags, 'space');
+  if (/\brecord|capture|resample|sample|clip|overdub\b/.test(blob)) addTag(tags, 'capture');
+  if (/\benergy|lift|drop|build|release|tension|arrival\b/.test(blob)) addTag(tags, 'energy');
+  if (/\bsoft|loud|quiet|mute|thin|crowded|dense|sparse\b/.test(blob)) addTag(tags, 'dynamics');
+  if (/\bhands|feet|mouth|playable|perform|rehears/i.test(blob)) addTag(tags, 'hands');
   return tags.slice(0, 7);
 }
 
@@ -561,20 +734,20 @@ function buildPlainMeaning(idea, stageId, profile, pitchContext, action, concept
   const ctx = stepContext(idea, profile, pitchContext, action);
   const lead = concepts.find((concept) => concept.term !== 'Register' && concept.term !== 'Density' && concept.term !== 'Tone colour');
   if (lead) {
-    return `${lead.meaning} For this ${ctx.sectionType.toLowerCase()}, use it through ${ctx.material}.`;
+    return tidyReadableText(`${lead.meaning} For this ${ctx.sectionType.toLowerCase()}, use it through ${ctx.material}.`);
   }
-  return `${STAGE_MEANINGS[stageId] || 'This is a practical composition move.'} Start with ${ctx.material}, make it audible, then add only what helps the section.`;
+  return tidyReadableText(`${STAGE_MEANINGS[stageId] || 'This is a practical composition move.'} Start with ${ctx.material}, make it audible, then add only what helps the section.`);
 }
 
 function cleanDirectiveStep(text = '') {
-  return sentenceCase(applyGlossary(text)
+  return sentenceCase(tidyReadableText(applyGlossary(text)
     .replace(/\bUse this as the app.s entry ritual before creative generation begins\.?/gi, '')
     .replace(/\bThe musical decision should emerge after the nervous system has softened\.?/gi, 'Let the next musical move come from calm listening.')
     .replace(/\bMake the result a practical this track\b/gi, 'Make it practical')
     .replace(/\bthe app\b/gi, 'the session')
     .replace(/\s+/g, ' ')
     .trim()
-    .replace(/[.;:,]+$/, ''));
+    .replace(/[.;:,]+$/, '')));
 }
 
 function directiveStepsFromAction(action = '', ctx) {
@@ -607,6 +780,20 @@ function buildSteps(idea, stageId, profile, pitchContext, action, concepts) {
   const directiveSteps = directiveStepsFromAction(action, ctx);
   if (directiveSteps.length) return directiveSteps;
 
+  if (stageId === 'section_identity') {
+    return [
+      `Name the emotional job of this ${ctx.sectionType.toLowerCase()}: warm, tense, ritual, spacious, euphoric or strange.`,
+      `Choose one sound or phrase from ${ctx.material} that best carries that feeling.`,
+      'Remove anything that does not support that identity yet.',
+    ];
+  }
+  if (stageId === 'section_role') {
+    return [
+      `Decide where this ${ctx.sectionType.toLowerCase()} sits in the track: arrival, contrast, lift, release or bridge.`,
+      `Use ${ctx.material} as the cue that makes the role obvious.`,
+      'Write one sentence for what the previous section hands to this one.',
+    ];
+  }
   if (stageId === 'pitch_material' || stageId === 'motif_hook') {
     return [
       notes ? `Use only these notes first: ${notes}.` : `Keep ${keyLabel} as the centre and choose three notes before adding more.`,
@@ -649,6 +836,20 @@ function buildSteps(idea, stageId, profile, pitchContext, action, concepts) {
       'Stop before the part starts sounding busy.',
     ];
   }
+  if (stageId === 'arrangement_arc') {
+    return [
+      `Choose a length for the ${ctx.sectionType.toLowerCase()}: 8, 16 or 32 bars.`,
+      `Use ${ctx.material} as the thing that changes across that length.`,
+      'Plan one entrance, one removal and one payoff before adding a new part.',
+    ];
+  }
+  if (stageId === 'transitions') {
+    return [
+      `Choose the handoff cue: fill, mute, riser, held ${ctx.root}, delay throw or field sound.`,
+      `Make ${ctx.material} point to the next section before the cut happens.`,
+      'Test the last two bars into the first two bars of the next section.',
+    ];
+  }
   if (stageId === 'mix_space') {
     return [
       `Mute the layer most likely to hide ${ctx.material}.`,
@@ -661,6 +862,13 @@ function buildSteps(idea, stageId, profile, pitchContext, action, concepts) {
       `Decide how your hands trigger or shape ${ctx.material} live.`,
       'Leave one thing automated and one thing playable.',
       'Make the change obvious enough for the audience to feel.',
+    ];
+  }
+  if (stageId === 'finish_review') {
+    return [
+      `Play the ${ctx.sectionType.toLowerCase()} from start to finish without editing.`,
+      `Write the keep/redo decision for ${ctx.material}.`,
+      'Save the version if the next recording move is obvious.',
     ];
   }
   return [
@@ -680,9 +888,195 @@ function buildPitchTip(stageId, pitchContext) {
   return pitchContext.reminder;
 }
 
+function stageActionVerb(stageId) {
+  return {
+    section_identity: 'Name the feeling',
+    pitch_material: 'Choose the notes',
+    tempo_groove: 'Set the pulse',
+    section_role: 'Place the section',
+    rhythmic_foundation: 'Build the groove',
+    bass_pulse: 'Ground the low end',
+    harmony_drone: 'Hold the centre',
+    motif_hook: 'Write the hook',
+    texture_layer: 'Add the colour',
+    movement_modulation: 'Move one sound',
+    arrangement_arc: 'Shape the bars',
+    transitions: 'Make the handoff',
+    mix_space: 'Clear the space',
+    live_translation: 'Make it playable',
+    finish_review: 'Commit the useful version',
+  }[stageId] || 'Try this move';
+}
+
+function buildDoNow(stageId, ctx) {
+  const section = ctx.sectionType.toLowerCase();
+  if (stageId === 'pitch_material') return `Choose three to five notes for the ${section} before writing a longer line.`;
+  if (stageId === 'tempo_groove' || stageId === 'rhythmic_foundation') return `Make one loop at ${ctx.tempo} BPM and let the body-feel lead.`;
+  if (stageId === 'bass_pulse') return `Start on ${ctx.root}; add octave, fifth or one passing note only if the groove asks for it.`;
+  if (stageId === 'harmony_drone') return `Hold ${ctx.root} as the floor and add one colour above it.`;
+  if (stageId === 'motif_hook') return `Make a two-bar phrase you can sing, play, or remember after one listen.`;
+  if (stageId === 'texture_layer') return 'Add one quiet texture, then mute it once to hear what it was doing.';
+  if (stageId === 'movement_modulation') return 'Move one knob, pedal, send or filter over 4 or 8 bars.';
+  if (stageId === 'arrangement_arc') return `Plan one entrance, one removal and one payoff for the ${section}.`;
+  if (stageId === 'transitions') return 'Test the last two bars into the first two bars of the next section.';
+  if (stageId === 'mix_space') return 'Mute or lower one masking layer before reaching for more processing.';
+  if (stageId === 'live_translation') return 'Decide what is played by hand, launched in Ableton, and left automated.';
+  if (stageId === 'finish_review') return 'Save the useful version and write the next recording move.';
+  return `Make the smallest playable version of ${ctx.material}.`;
+}
+
+function buildPlayFirst(stageId, ctx) {
+  const section = ctx.sectionType.toLowerCase();
+  const material = ctx.material === 'the core idea' ? 'one small musical move' : ctx.material;
+  const noteCue = ctx.notes ? `Notes: ${ctx.notes}. Home: ${ctx.root}.` : `Home note: ${ctx.root}.`;
+  const pulseCue = `${ctx.tempo} BPM · ${ctx.groove}`;
+  const common = {
+    section_identity: {
+      headline: `Make one 8-bar sketch that proves the ${section} mood.`,
+      detail: `Use ${material} as the audible clue. Do not add a second idea until the feeling is clear.`,
+      check: 'You should be able to name the section in one plain sentence.',
+    },
+    pitch_material: {
+      headline: ctx.notes ? `Write a 2-bar phrase using only ${ctx.notes}.` : `Write a 2-bar phrase with ${ctx.root} as home.`,
+      detail: `End on ${ctx.root}, repeat once, then change only the last note or rhythm.`,
+      check: `${ctx.root} should feel settled before the phrase becomes clever.`,
+    },
+    tempo_groove: {
+      headline: `Build a 4-bar loop at ${pulseCue}.`,
+      detail: `Use ${material} as the thing that repeats, answers, or leaves space in the pulse.`,
+      check: 'The groove should make your body move before it has extra detail.',
+    },
+    section_role: {
+      headline: `Choose the job of this ${section}: arrival, contrast, lift, release, bridge or ending.`,
+      detail: `Let ${material} announce that job with one obvious sound, rhythm or register change.`,
+      check: 'The next section should know what this one is handing over.',
+    },
+    rhythmic_foundation: {
+      headline: `Tap, mute-pick or program the main pulse for 4 bars at ${ctx.tempo} BPM.`,
+      detail: `Let ${material} answer the pulse without filling every gap.`,
+      check: 'Mute the extras; the rhythm should still feel held together.',
+    },
+    bass_pulse: {
+      headline: `Start the bass on ${ctx.root}, then try octave and fifth before passing notes.`,
+      detail: `Keep ${material} simple enough that kick, bass and guitar can all breathe.`,
+      check: 'The low end should feel trustworthy at low volume.',
+    },
+    harmony_drone: {
+      headline: `Hold ${ctx.root} as a drone or pedal tone for 8 bars.`,
+      detail: ctx.notes ? `Add one colour note from ${ctx.notes}, then wait before adding a chord.` : `Add one colour note above it, then wait before adding a chord.`,
+      check: 'The harmony should centre the section without covering the hook.',
+    },
+    motif_hook: {
+      headline: ctx.notes ? `Make a 2-bar hook from ${ctx.notes}.` : `Make a 2-bar hook around ${ctx.root}.`,
+      detail: `Use ${material} as the first shape. Repeat it once before changing it.`,
+      check: 'You should remember the phrase after hearing it twice.',
+    },
+    texture_layer: {
+      headline: 'Add one quiet colour layer for 8 bars.',
+      detail: `Turn ${material} into air, grit, shimmer, room tone or a delay tail under the main idea.`,
+      check: 'Mute it once; the gap should make the section feel different.',
+    },
+    movement_modulation: {
+      headline: 'Record one slow movement over 4 or 8 bars.',
+      detail: `Move one filter, delay send, drive, pan, pedal or synth control on ${material}.`,
+      check: 'The sound should breathe without feeling busier.',
+    },
+    arrangement_arc: {
+      headline: `Map the ${section} as 8, 16 or 32 bars.`,
+      detail: `Use ${material} for one entrance, one removal and one payoff.`,
+      check: 'The loop should feel like it travels somewhere.',
+    },
+    transitions: {
+      headline: 'Write the last 2 bars into the first 2 bars of the next section.',
+      detail: `Use ${material} as the handoff cue: fill, mute, held note, delay throw or field sound.`,
+      check: 'The next section should feel invited, not pasted on.',
+    },
+    mix_space: {
+      headline: 'Mute or lower one layer that hides the main idea.',
+      detail: `Make room for ${material} before adding EQ, reverb or more effects.`,
+      check: 'At low volume, pulse, low end and hook should still be easy to follow.',
+    },
+    live_translation: {
+      headline: 'Choose one playable gesture and one reliable automated part.',
+      detail: `Decide whether hands, feet, Ableton clips or hardware controls shape ${material}.`,
+      check: 'You should be able to perform the move twice without panic or screen-hunting.',
+    },
+    finish_review: {
+      headline: `Play the ${section} through once and save the useful version.`,
+      detail: `Write the next recording, rehearsal or arrangement move for ${material}.`,
+      check: 'Stop when the next action is obvious.',
+    },
+  };
+  return {
+    label: 'Play first',
+    noteCue,
+    ...(common[stageId] || {
+      headline: `Make the smallest playable version of ${material}.`,
+      detail: `Use it inside ${ctx.keyLabel} at ${pulseCue}, then change only one thing.`,
+      check: `Keep it if the ${section} becomes clearer or more alive.`,
+    }),
+  };
+}
+
+function buildUseCue(stageId, ctx, tags = []) {
+  if (ctx.notes && ['pitch_material', 'bass_pulse', 'harmony_drone', 'motif_hook'].includes(stageId)) {
+    if (stageId === 'bass_pulse') return `${ctx.root}, octave and fifth first; borrow from ${ctx.notes} only after the pulse is clear.`;
+    return `${ctx.notes}. Treat ${ctx.root} as home.`;
+  }
+  if (tags.includes('guitar')) return 'Guitar: choose one neck area, one articulation, and one gap for Ableton to answer.';
+  if (tags.includes('Ableton')) return 'Ableton: capture one clean clip, duplicate it, then change only density or automation.';
+  if (tags.includes('MicroFreak')) return 'MicroFreak: choose one oscillator and one matrix move before adding effects.';
+  if (tags.includes('SL-2')) return 'SL-2: sync the pattern, pick one chop or stereo motion, and leave room for kick/bass.';
+  if (tags.includes('Ampero')) return 'Ampero: save one preset move and check gain before adding more space.';
+  if (tags.includes('field sound')) return 'Field sound: loop the cleanest moment quietly and decide whether it is rhythm, air or transition glue.';
+  if (stageId === 'tempo_groove' || stageId === 'rhythmic_foundation') return `${ctx.groove} at ${ctx.tempo} BPM; keep one anchor simple.`;
+  if (stageId === 'texture_layer' || stageId === 'mix_space') return 'Use volume, filtering and space before adding another layer.';
+  return `Use ${ctx.material} as the practical starting point.`;
+}
+
+function buildListenFor(stageId, ctx, tags = []) {
+  if (stageId === 'pitch_material') return `${ctx.root} should feel like home before the phrase becomes clever.`;
+  if (stageId === 'tempo_groove' || stageId === 'rhythmic_foundation') return 'The groove should make you nod before it becomes detailed.';
+  if (stageId === 'bass_pulse') return 'The low end should feel trustworthy and leave room for guitar.';
+  if (stageId === 'harmony_drone') return 'The held sound should centre the part without covering the hook.';
+  if (stageId === 'motif_hook') return 'The phrase should be memorable after two repeats.';
+  if (stageId === 'texture_layer') return 'The texture should add life when unmuted and leave a useful gap when muted.';
+  if (stageId === 'movement_modulation') return 'The sound should breathe without feeling busier.';
+  if (stageId === 'arrangement_arc') return 'The section should travel somewhere without needing many new parts.';
+  if (stageId === 'transitions') return 'The next section should feel invited, not pasted on.';
+  if (stageId === 'mix_space') return 'At low volume, the pulse, low end and hook should still be easy to follow.';
+  if (stageId === 'live_translation') return 'The live move should be obvious, repeatable and not steal your hands from guitar.';
+  if (stageId === 'finish_review') return 'The next action should be clear enough that you can stop tweaking.';
+  if (tags.includes('space')) return 'The space should feel like a place, not just a large reverb.';
+  return `The ${ctx.sectionType.toLowerCase()} should feel clearer, warmer or more alive.`;
+}
+
+function buildWhyHere(stageId, ctx) {
+  const section = ctx.sectionType.toLowerCase();
+  if (stageId === 'section_identity') return `This gives the ${section} a reason to exist before you add parts.`;
+  if (stageId === 'pitch_material') return `The note world decides what the ${section} can safely return to.`;
+  if (stageId === 'tempo_groove') return `The pulse tells every later part where to sit.`;
+  if (stageId === 'section_role') return `The track map needs to know what this ${section} is doing.`;
+  if (stageId === 'rhythmic_foundation') return 'A stable rhythmic floor makes later colour feel intentional.';
+  if (stageId === 'bass_pulse') return 'The low end carries the physical promise of the section.';
+  if (stageId === 'harmony_drone') return `The drone or harmony keeps ${ctx.root} present while other sounds move.`;
+  if (stageId === 'motif_hook') return 'A small hook gives the listener something to recognise through the texture.';
+  if (stageId === 'texture_layer') return 'Colour matters now only if it supports the main idea.';
+  if (stageId === 'movement_modulation') return 'One moving control can create evolution without clutter.';
+  if (stageId === 'arrangement_arc') return 'This turns a loop into a section with direction.';
+  if (stageId === 'transitions') return 'A deliberate cue keeps the track from feeling like separate loops.';
+  if (stageId === 'mix_space') return 'Space decisions now prevent later parts from fighting each other.';
+  if (stageId === 'live_translation') return 'Live choices now keep the idea performable, not just printable.';
+  if (stageId === 'finish_review') return 'Finishing means choosing the useful version, not perfecting everything.';
+  return `It supports the current ${section} decision.`;
+}
+
 export function buildIdeaPresentation(idea, profile, stageId, context = {}) {
   const pitchContext = getPitchContext(profile, context.ragaCard || null);
-  const action = simplifyPrompt(idea.prompt || '');
+  let action = simplifyPrompt(idea.prompt || '');
+  if (actionStillCryptic(action)) {
+    action = directActionFromStage(idea, stageId, profile, pitchContext, action);
+  }
   const tags = [];
   for (const tag of [...deriveIdeaTags(idea, stageId), ...(idea._indexTags || [])]) addTag(tags, tag);
   const pitchTip = buildPitchTip(stageId, pitchContext);
@@ -690,13 +1084,23 @@ export function buildIdeaPresentation(idea, profile, stageId, context = {}) {
     .filter((concept, index, list) => list.findIndex((item) => item.term === concept.term) === index)
     .slice(0, 4);
   const plainMeaning = buildPlainMeaning(idea, stageId, profile, pitchContext, action, concepts);
+  const ctx = stepContext(idea, profile, pitchContext, action);
+  const cueTags = tags.slice(0, 7);
+  if (pitchContext?.type === 'raga') addTag(cueTags, 'raga');
+  if (pitchContext?.type === 'scale') addTag(cueTags, 'scale');
 
   return {
     title: STAGE_TITLES[stageId] || 'Try this',
     action,
     plainMeaning,
+    playFirst: buildPlayFirst(stageId, ctx),
+    doNow: buildDoNow(stageId, ctx),
+    useCue: buildUseCue(stageId, ctx, cueTags),
+    listenFor: buildListenFor(stageId, ctx, cueTags),
+    whyHere: buildWhyHere(stageId, ctx),
+    actionVerb: stageActionVerb(stageId),
     concepts: concepts.map(({ term, meaning, tryThis }) => ({ term, meaning, tryThis })),
-    tags: tags.slice(0, 7),
+    tags: cueTags,
     steps: buildSteps(idea, stageId, profile, pitchContext, action, concepts),
     pitchTip,
     sourceLine: idea.sourceBook ? `Book ${idea.bookNumber} - ${idea.sourceBook}` : 'Source trace available',

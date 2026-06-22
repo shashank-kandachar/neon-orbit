@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.30';
-import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.30';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.30';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.30';
-import { formatPitchSummary, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.30';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.30';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.30';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.55';
+import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.55';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.55';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.55';
+import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.55';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.55';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.55';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -46,13 +46,353 @@ const SCREENS = [...SETUP_SCREENS, ...BUILD_PHASES];
 const STAGE_BY_ID = Object.fromEntries(STAGES.map((stage) => [stage.id, stage]));
 
 const ARRANGEMENT_TEMPLATE = [
-  { id: 'intro', label: 'Intro', cue: 'Open the world and establish the first colour.', accepts: ['intro'] },
-  { id: 'main_groove', label: 'Main groove', cue: 'State the body of the track clearly.', accepts: ['main groove', 'verse-like section', 'live jam section'] },
-  { id: 'breakdown', label: 'Breakdown', cue: 'Create space, contrast or a lower-energy window.', accepts: ['breakdown', 'interlude'] },
-  { id: 'build', label: 'Build', cue: 'Increase pressure without losing the pulse.', accepts: ['build', 'transition', 'bridge'] },
-  { id: 'peak', label: 'Drop / peak', cue: 'Let the strongest version arrive.', accepts: ['drop / peak'] },
-  { id: 'outro', label: 'Outro', cue: 'Release the energy and leave a trace.', accepts: ['outro'] },
+  {
+    id: 'intro',
+    label: 'Intro',
+    purpose: 'Invite the listener into the sound world before the main body arrives.',
+    cue: 'Open with the first colour, pulse fragment or drone.',
+    entryCue: 'Start sparse: one place, one texture, one pitch centre.',
+    exitCue: 'Let one recognisable sound lead into the main groove.',
+    energy: 'Low to medium',
+    accepts: ['intro'],
+  },
+  {
+    id: 'main_groove',
+    label: 'Main groove',
+    purpose: 'State the body of the track clearly enough that later changes make sense.',
+    cue: 'Lock the pulse, low end and main hook.',
+    entryCue: 'Bring the groove in with a clear downbeat or repeated cell.',
+    exitCue: 'Remove or thin one layer so the next section has somewhere to go.',
+    energy: 'Medium',
+    accepts: ['main groove', 'verse-like section', 'live jam section'],
+  },
+  {
+    id: 'breakdown',
+    label: 'Breakdown',
+    purpose: 'Create space, contrast or a lower-energy window without losing the track identity.',
+    cue: 'Strip back to drone, field sound, texture or a small motif.',
+    entryCue: 'Let the groove fall away gradually or disappear for one decisive bar.',
+    exitCue: 'Leave a rhythmic clue that points back to motion.',
+    energy: 'Low to medium',
+    accepts: ['breakdown', 'interlude'],
+  },
+  {
+    id: 'build',
+    label: 'Build',
+    purpose: 'Increase pressure while keeping the listener oriented.',
+    cue: 'Add motion, density or register lift in measured steps.',
+    entryCue: 'Begin with the same pulse, then start one obvious rise.',
+    exitCue: 'Hold back one element so the peak still feels earned.',
+    energy: 'Medium to high',
+    accepts: ['build', 'transition', 'bridge'],
+  },
+  {
+    id: 'peak',
+    label: 'Drop / peak',
+    purpose: 'Let the strongest, most physical version of the idea arrive.',
+    cue: 'Make the hook, bass and rhythm agree.',
+    entryCue: 'Arrive from silence, a fill, a held note or a clear rhythmic pickup.',
+    exitCue: 'Choose whether the energy releases suddenly or dissolves slowly.',
+    energy: 'High',
+    accepts: ['drop / peak'],
+  },
+  {
+    id: 'outro',
+    label: 'Outro',
+    purpose: 'Release the energy and leave a memory of the track.',
+    cue: 'Return to a reduced version, tail, drone or field trace.',
+    entryCue: 'Keep only the sound that still carries the identity.',
+    exitCue: 'Let the final gesture fade, ring or stop with intention.',
+    energy: 'Low',
+    accepts: ['outro'],
+  },
 ];
+
+const NEXT_SLOT_ORDER = ['main_groove', 'intro', 'breakdown', 'build', 'peak', 'outro'];
+
+const SECTION_STATUSES = [
+  { id: 'sketch', label: 'Sketch', cue: 'Worth exploring, not ready to arrange tightly yet.' },
+  { id: 'usable', label: 'Usable', cue: 'Musical enough to place in the track map.' },
+  { id: 'recorded', label: 'Recorded', cue: 'Audio or MIDI has been captured.' },
+  { id: 'arranged', label: 'Arranged', cue: 'The section has a clear entrance, exit and length.' },
+  { id: 'mixed', label: 'Mixed', cue: 'Level, space and tone are working well enough for export.' },
+];
+
+const GEAR_DOMAIN_HINTS = {
+  guitar: ['guitar', 'live-performance'],
+  ableton: ['electronic-composition', 'mixing-production', 'live-performance'],
+  microfreak: ['microfreak', 'sound-design', 'electronic-composition'],
+  sl2: ['sl2', 'rhythm-groove', 'sound-design'],
+  ampero: ['ampero', 'guitar', 'mixing-production'],
+  field_recordings: ['sampling-field', 'sound-design', 'psychedelic-structure'],
+};
+
+const GEAR_WORKFLOWS = {
+  guitar: {
+    id: 'guitar',
+    label: 'Guitar',
+    role: 'Playable source for riffs, drones, swells, harmonics and noisy gestures.',
+    setup: [
+      'Choose the job: riff, drone, texture, response line or live gesture.',
+      'Pick one neck area before writing more notes.',
+      'Capture a clean DI when the part matters, even if you also print pedals.',
+    ],
+    stages: {
+      pitch_material: {
+        focus: 'Fretboard map',
+        steps: [
+          'Map {notes} into one comfortable neck area.',
+          'Keep {root} easy to return to with a drone string, bass note or repeated harmonic.',
+          'Move the phrase to a second octave only after the first position feels natural.',
+        ],
+      },
+      motif_hook: {
+        focus: 'Hook under the fingers',
+        steps: [
+          'Make a two-bar phrase you can play without looking at the screen.',
+          'Choose pick attack, muting or slide before adding more notes.',
+          'Leave a gap for Ableton, synth or field sound to answer.',
+        ],
+      },
+      texture_layer: {
+        focus: 'Texture without clutter',
+        steps: [
+          'Use volume swells, harmonics, muted scrapes or eBow-like sustain as the texture.',
+          'High-pass or lower the layer until the hook and low end stay clear.',
+          'Record one dry safety pass if the pedal sound is hard to recreate.',
+        ],
+      },
+      live_translation: {
+        focus: 'Hands-on performance',
+        steps: [
+          'Choose one action your hands can repeat reliably: mute, swell, slide, tremolo or harmonic.',
+          'Let Ableton handle the part that would steal your hands from guitar.',
+          'Rehearse the entrance and exit twice before changing the sound.',
+        ],
+      },
+    },
+  },
+  ableton: {
+    id: 'ableton',
+    label: 'Ableton',
+    role: 'Clip capture, arrangement sketch, resampling, automation and live scene control.',
+    setup: [
+      'Decide whether this section lives first in Session View or Arrangement View.',
+      'Set a clip length before recording so loops do not drift by accident.',
+      'Name the scene by role: intro, groove, breakdown, build, peak or outro.',
+    ],
+    stages: {
+      rhythmic_foundation: {
+        focus: 'Clip length and groove',
+        steps: [
+          'Set a 1, 2, 4 or 8-bar capture length at {tempo} BPM.',
+          'Record the simplest pulse first, then add groove detail in a duplicate clip.',
+          'Keep one empty clip slot ready for resampling happy accidents.',
+        ],
+      },
+      arrangement_arc: {
+        focus: 'Scene to timeline',
+        steps: [
+          'Make one scene for the current {section}.',
+          'Duplicate it before changing density, mute states or automation.',
+          'Record a rough pass into Arrangement View once the section has an entrance and exit.',
+        ],
+      },
+      movement_modulation: {
+        focus: 'Automation capture',
+        steps: [
+          'Choose one macro, send, filter or device control to move.',
+          'Record the movement over 4 or 8 bars instead of drawing many small edits.',
+          'Keep the first take if the motion feels alive, then trim only the obvious mistakes.',
+        ],
+      },
+      live_translation: {
+        focus: 'Live reliability',
+        steps: [
+          'Choose what is launched as a clip and what is played by hand.',
+          'Map only one or two controls for the section.',
+          'Leave one scene that can loop safely if the live moment needs time.',
+        ],
+      },
+    },
+  },
+  microfreak: {
+    id: 'microfreak',
+    label: 'MicroFreak',
+    role: 'Character synth voice for unstable hooks, drones, arps and animated textures.',
+    setup: [
+      'Choose oscillator type before effects: wavetable, Karplus, harmonic, noise or granular-style source.',
+      'Pick one matrix movement that the section can hear.',
+      'Decide whether the arp/sequencer leads the rhythm or follows Ableton.',
+    ],
+    stages: {
+      motif_hook: {
+        focus: 'Synth phrase',
+        steps: [
+          'Write a small phrase from {notes} before changing oscillator type.',
+          'Use pressure or cycling envelope as the expressive move.',
+          'Record MIDI and audio so the sound can be edited or committed later.',
+        ],
+      },
+      harmony_drone: {
+        focus: 'Drone colour',
+        steps: [
+          'Hold {root} as the centre and let the oscillator provide the colour.',
+          'Move one matrix amount slowly rather than opening every modulation path.',
+          'Keep the drone quiet enough for guitar or bass to remain physical.',
+        ],
+      },
+      movement_modulation: {
+        focus: 'Matrix movement',
+        steps: [
+          'Choose one source and one destination in the matrix.',
+          'Move it over 4 or 8 bars while Ableton records audio.',
+          'Stop when the sound breathes without becoming a different patch.',
+        ],
+      },
+      live_translation: {
+        focus: 'Capture safely',
+        steps: [
+          'Decide whether MicroFreak is played live, sequenced, or sampled into Ableton.',
+          'Save the patch name in the section notes before moving on.',
+          'Record a fallback audio loop if the patch is unstable.',
+        ],
+      },
+    },
+  },
+  sl2: {
+    id: 'sl2',
+    label: 'Boss SL-2',
+    role: 'Sliced motion, tremolo-gate rhythm, stereo movement and transition energy.',
+    setup: [
+      'Choose tempo sync first so the pattern sits with the groove.',
+      'Pick pattern type: pulse, chop, swing, rise, stereo motion or hard gate.',
+      'Decide chain placement: before delay for rhythmic repeats, after delay for chopped space.',
+    ],
+    stages: {
+      rhythmic_foundation: {
+        focus: 'Pattern against pulse',
+        steps: [
+          'Sync the SL-2 to {tempo} BPM or tap it until it locks with the main groove.',
+          'Choose one pattern that leaves space for kick and bass.',
+          'Record 8 bars and mute it once to check whether the groove still breathes.',
+        ],
+      },
+      movement_modulation: {
+        focus: 'Stereo motion',
+        steps: [
+          'Use the SL-2 for one clear movement: side-to-side, chop, rise or pulse.',
+          'Keep depth lower if the hook disappears.',
+          'Automate or perform only one extra effect around it.',
+        ],
+      },
+      transitions: {
+        focus: 'Handoff chop',
+        steps: [
+          'Bring the slicer in during the last 1 or 2 bars before the next section.',
+          'Increase depth or pattern intensity, then cut or release into the arrival.',
+          'Record the transition as audio so the timing stays intentional.',
+        ],
+      },
+      live_translation: {
+        focus: 'Pedal move',
+        steps: [
+          'Choose whether SL-2 is always on for this section or only a transition move.',
+          'Place the footswitch moment where your hands are not changing guitar parts.',
+          'Keep a non-sliced fallback sound ready.',
+        ],
+      },
+    },
+  },
+  ampero: {
+    id: 'ampero',
+    label: 'Ampero',
+    role: 'Guitar chain, gain staging, expression control, routing and live preset recall.',
+    setup: [
+      'Set the chain order before sound hunting: drive, modulation, delay, reverb, utility.',
+      'Check gain into Ableton so the loudest gesture does not clip.',
+      'Choose one expression or MIDI move that matters for the section.',
+    ],
+    stages: {
+      texture_layer: {
+        focus: 'Chain as texture',
+        steps: [
+          'Build the sound from one chain idea: shimmer, tape delay, reverse, tremolo, drive or space.',
+          'Lower wet mix until the guitar still feels playable.',
+          'Save the preset before changing the next block.',
+        ],
+      },
+      movement_modulation: {
+        focus: 'Expression move',
+        steps: [
+          'Assign one expression move: delay mix, reverb size, drive, filter or volume.',
+          'Perform it over 4 or 8 bars and record the result.',
+          'Keep the heel/toe extremes musical so it works live.',
+        ],
+      },
+      mix_space: {
+        focus: 'Gain and space',
+        steps: [
+          'Check the preset at the loudest part of the section.',
+          'Reduce low end before adding more reverb or delay.',
+          'Leave room for bass and kick before widening the guitar.',
+        ],
+      },
+      live_translation: {
+        focus: 'Preset recall',
+        steps: [
+          'Name the preset after the section role, not just the sound.',
+          'Write down the switch or expression move used in the section.',
+          'Avoid a preset change at the same moment as a difficult guitar entrance.',
+        ],
+      },
+    },
+  },
+  field_recordings: {
+    id: 'field_recordings',
+    label: 'Field recordings',
+    role: 'Place, texture, rhythm, memory and transition glue from real-world sound.',
+    setup: [
+      'Choose the role: air, rhythm, place, noise bed, transition or emotional memory.',
+      'Clean only what hides the music: rumble, harsh hiss or one distracting hit.',
+      'Keep the original file name or source note for traceability.',
+    ],
+    stages: {
+      texture_layer: {
+        focus: 'Place without masking',
+        steps: [
+          'Loop the cleanest few seconds and lower it until the groove still leads.',
+          'High-pass if it fights bass or kick.',
+          'Mute it once in the section to check what it was adding.',
+        ],
+      },
+      rhythmic_foundation: {
+        focus: 'Everyday rhythm',
+        steps: [
+          'Find one repeated sound inside the recording.',
+          'Slice or gate it lightly so it answers the main pulse.',
+          'Keep the human timing unless it breaks the groove.',
+        ],
+      },
+      transitions: {
+        focus: 'Scene change',
+        steps: [
+          'Use the field sound to cover or reveal the next section.',
+          'Fade, filter or reverse it over the last bar before the handoff.',
+          'Let the listener feel a place change, not just an effect.',
+        ],
+      },
+      mix_space: {
+        focus: 'Noise floor control',
+        steps: [
+          'Remove low rumble before lowering the whole recording.',
+          'Keep only the frequency area that gives place or texture.',
+          'Check the section at low volume to make sure the source does not blur the hook.',
+        ],
+      },
+    },
+  },
+};
 
 const GROOVE_GUIDANCE = {
   'Straight 4/4': 'Put the kick or main pulse in the body first. Let guitar and synth answer around it instead of filling every gap.',
@@ -204,6 +544,7 @@ const state = {
   ideaFeedback: {},
   searchResults: [],
   traceIdea: null,
+  lastSelectedRaga: '',
   utilityPanel: 'section',
 };
 
@@ -286,18 +627,58 @@ function currentScreen() {
 }
 
 function defaultArrangement() {
-  return ARRANGEMENT_TEMPLATE.map((slot) => ({ id: slot.id, sectionId: '' }));
+  return ARRANGEMENT_TEMPLATE.map((slot) => ({ ...slot, sectionId: '' }));
+}
+
+function arrangementSlotById(slotId) {
+  return ARRANGEMENT_TEMPLATE.find((slot) => slot.id === slotId) || null;
+}
+
+function validSectionStatus(status = '') {
+  return SECTION_STATUSES.some((item) => item.id === status) ? status : 'sketch';
+}
+
+function statusLabel(status = '') {
+  return SECTION_STATUSES.find((item) => item.id === status)?.label || 'Sketch';
+}
+
+function statusCue(status = '') {
+  return SECTION_STATUSES.find((item) => item.id === status)?.cue || SECTION_STATUSES[0].cue;
+}
+
+function statusOptions(selected = 'sketch') {
+  return SECTION_STATUSES.map((status) => `
+    <option value="${escapeHtml(status.id)}" ${status.id === selected ? 'selected' : ''}>${escapeHtml(status.label)}</option>
+  `).join('');
+}
+
+function inferSectionStatus(section = {}) {
+  if (section.compositionStatus) return validSectionStatus(section.compositionStatus);
+  const completed = Object.keys(section.plan || state.plan || {}).length;
+  if (completed >= STAGES.length) return 'arranged';
+  if (completed >= 8) return 'usable';
+  return 'sketch';
+}
+
+function normaliseSectionSummary(section = {}) {
+  return {
+    ...section,
+    compositionStatus: inferSectionStatus(section),
+    variationOf: section.variationOf || '',
+    arrangementNote: section.arrangementNote || '',
+  };
 }
 
 function normaliseSong(song = null) {
   const base = song || {};
   const existingSlots = new Map((base.arrangement || []).map((slot) => [slot.id, slot]));
+  const sections = Array.isArray(base.sections) ? base.sections.map(normaliseSectionSummary) : [];
   return {
     id: base.id || `song_${Date.now()}`,
     title: base.title || 'New Song',
-    sections: Array.isArray(base.sections) ? base.sections : [],
+    sections,
     arrangement: ARRANGEMENT_TEMPLATE.map((slot) => ({
-      id: slot.id,
+      ...slot,
       sectionId: existingSlots.get(slot.id)?.sectionId || '',
     })),
     updatedAt: base.updatedAt || new Date().toISOString(),
@@ -322,6 +703,7 @@ function saveAppState() {
     phaseFocus: state.phaseFocus,
     screenIndex: state.screenIndex,
     traceIdea: state.traceIdea,
+    lastSelectedRaga: state.lastSelectedRaga,
   });
 }
 
@@ -335,14 +717,20 @@ function hydrateState() {
   state.song = normaliseSong(stored.song || createDraftSong());
   state.currentSectionId = stored.currentSectionId || null;
   state.profile = { ...DEFAULT_PROFILE, ...(stored.profile || {}) };
+  state.profile.gearFocus = Array.isArray(state.profile.gearFocus) ? state.profile.gearFocus : [...DEFAULT_PROFILE.gearFocus];
+  state.profile.domainFilters = Array.isArray(state.profile.domainFilters) ? state.profile.domainFilters : [...DEFAULT_PROFILE.domainFilters];
+  state.profile.instrument = state.profile.instrument || DEFAULT_PROFILE.instrument;
   state.profile.noteSpelling = state.profile.noteSpelling || 'sharps';
   state.profile.keyRoot = state.profile.keyRoot || DEFAULT_PROFILE.keyRoot;
   state.profile.pitchPath = state.profile.pitchPath || (state.profile.selectedRaga ? 'raga' : 'scale');
   if (!['scale', 'raga'].includes(state.profile.pitchPath)) state.profile.pitchPath = 'scale';
+  state.lastSelectedRaga = stored.lastSelectedRaga || state.profile.selectedRaga || '';
   if (state.profile.pitchPath === 'scale') {
+    rememberRagaChoice();
     state.profile.selectedRaga = '';
     normaliseScalePitchWorld();
   }
+  syncProfileDomains();
   state.plan = stored.plan || {};
   state.phaseFocus = stored.phaseFocus || {};
   state.screenIndex = 0;
@@ -356,6 +744,23 @@ function optionList(values, selected = '', emptyLabel = '') {
     items.push(`<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(value)}</option>`);
   });
   return items.join('');
+}
+
+function renderNoteSpellingControl() {
+  const spelling = state.profile.noteSpelling || DEFAULT_PROFILE.noteSpelling || 'sharps';
+  return `
+    <div class="segmented-control note-spelling-control" role="radiogroup" aria-label="Choose note spelling">
+      ${[
+        ['sharps', 'Sharps', 'C# F# G#'],
+        ['flats', 'Flats', 'Db Gb Ab'],
+      ].map(([value, label, hint]) => `
+        <button type="button" class="${spelling === value ? 'is-selected' : ''}" data-note-spelling="${value}" aria-pressed="${spelling === value}">
+          <span>${label}</span>
+          <em>${hint}</em>
+        </button>
+      `).join('')}
+    </div>
+  `;
 }
 
 function isDone(screen) {
@@ -414,9 +819,12 @@ function uniqueList(values = []) {
 
 function stageContextIds(stageId, mode = 'normal') {
   const neighbours = STAGE_LOAD_NEIGHBOURS[stageId] || [];
+  const gearStages = mode === 'gear'
+    ? ['motif_hook', 'texture_layer', 'movement_modulation', 'rhythmic_foundation', 'transitions', 'mix_space', 'live_translation']
+    : [];
   const ids = mode === 'deeper'
     ? [stageId, ...neighbours, ...(currentScreen().stageIds || [])]
-    : [stageId, ...neighbours];
+    : [stageId, ...neighbours, ...gearStages];
   return uniqueList(ids);
 }
 
@@ -459,8 +867,37 @@ function renderStageGuide(screen, stageId) {
         <p>${escapeHtml(guidance.listen)}</p>
       </div>
       <div class="stage-guide-actions">
-        <button type="button" class="btn small" data-refresh="context" data-refresh-mode="fresh">Randomise</button>
-        <button type="button" class="btn small" data-open-panel="search">Dig deeper</button>
+        <button type="button" class="btn small" data-open-panel="search">Ideas</button>
+        <button type="button" class="btn small" data-open-panel="track">Track</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderComposerNudge(stageId) {
+  const guidance = STAGE_GUIDANCE[stageId] || {
+    decide: 'Make one practical composition decision for this focus.',
+    listen: 'Keep the move that makes the section easier to hear, play or arrange.',
+  };
+  const pitchContext = getPitchContext(state.profile, selectedRagaCard());
+  const noteLine = pitchContext?.notes?.length
+    ? pitchContext.notes.slice(0, 7).join(', ')
+    : `${state.profile.keyRoot || 'D'} as home`;
+  const modes = stageRefreshModes(stageId).filter((mode) => mode !== 'normal').slice(0, 3);
+  return `
+    <section class="composer-nudge">
+      <div>
+        <span class="mini-label">Composition companion</span>
+        <strong>${escapeHtml(guidance.decide)}</strong>
+        <p>${escapeHtml(`${currentKeyLabel()} · ${noteLine} · ${guidance.listen}`)}</p>
+      </div>
+      <div class="composer-actions" aria-label="Generate another contextual idea">
+        <button type="button" class="btn primary small" data-refresh="normal" data-refresh-mode="normal">Best fit</button>
+        ${modes.map((mode) => `
+          <button type="button" class="btn small ${state.promptMode === mode ? 'is-active' : ''}" data-refresh="context" data-refresh-mode="${escapeHtml(mode)}">
+            ${escapeHtml(promptModeLabel(mode))}
+          </button>
+        `).join('')}
       </div>
     </section>
   `;
@@ -469,6 +906,22 @@ function renderStageGuide(screen, stageId) {
 function renderIdeaCompanion(presentation) {
   return `
     <aside class="idea-companion">
+      <div class="companion-cue-grid">
+        <div>
+          <span>Use</span>
+          <strong>${escapeHtml(presentation.useCue || 'Use the current key, groove and tool choice.')}</strong>
+        </div>
+        <div>
+          <span>Listen</span>
+          <strong>${escapeHtml(presentation.listenFor || 'Keep it only if the part becomes clearer.')}</strong>
+        </div>
+      </div>
+      ${presentation.whyHere ? `
+        <div class="why-here">
+          <span>Why now</span>
+          <p>${escapeHtml(presentation.whyHere)}</p>
+        </div>
+      ` : ''}
       <div class="companion-block">
         <span class="mini-label">What this means</span>
         <p>${escapeHtml(presentation.plainMeaning || 'Try the idea in the current section and keep only what makes the music clearer.')}</p>
@@ -486,6 +939,22 @@ function renderIdeaCompanion(presentation) {
       ` : ''}
       ${presentation.pitchTip ? `<div class="prompt-tip">${escapeHtml(presentation.pitchTip)}</div>` : ''}
     </aside>
+  `;
+}
+
+function renderPlayFirst(presentation) {
+  const cue = presentation.playFirst;
+  if (!cue) return '';
+  return `
+    <div class="play-first">
+      <span>${escapeHtml(cue.label || 'Play first')}</span>
+      <strong>${escapeHtml(cue.headline || presentation.doNow || 'Make the smallest playable version first.')}</strong>
+      ${cue.detail ? `<p>${escapeHtml(cue.detail)}</p>` : ''}
+      <div class="play-first-footer">
+        ${cue.noteCue ? `<em>${escapeHtml(cue.noteCue)}</em>` : ''}
+        ${cue.check ? `<em>${escapeHtml(cue.check)}</em>` : ''}
+      </div>
+    </div>
   `;
 }
 
@@ -511,6 +980,8 @@ function payload() {
     updatedAt: new Date().toISOString(),
     song: state.song,
     profile: state.profile,
+    gearWorkflows: gearWorkflowExport(),
+    trackIntelligence: buildTrackIntelligence(),
     summary: buildSectionSummary(state.profile, plan),
     plan,
   };
@@ -526,8 +997,13 @@ function ideaPresentation(idea, stageId = currentScreen().id) {
 }
 
 function refreshExportLinks() {
-  exportPlanMarkdown(payload(), STAGES, els.exportMdBtn);
-  exportPlanJson(payload(), els.exportJsonBtn);
+  try {
+    exportPlanMarkdown(payload(), STAGES, els.exportMdBtn);
+    exportPlanJson(payload(), els.exportJsonBtn);
+  } catch (error) {
+    console.error(error);
+    toast('Export will be ready after the section reloads.');
+  }
 }
 
 function activePitchPath() {
@@ -564,6 +1040,28 @@ function normaliseScalePitchWorld() {
   if (state.profile.pitchWorld === 'Raga-driven') state.profile.pitchWorld = DEFAULT_PROFILE.pitchWorld;
 }
 
+function rememberRagaChoice(value = state.profile.selectedRaga) {
+  if (value) state.lastSelectedRaga = value;
+}
+
+function setPitchPath(path = 'scale') {
+  const nextPath = path === 'raga' ? 'raga' : 'scale';
+  if (nextPath === 'scale') {
+    rememberRagaChoice();
+    state.profile.selectedRaga = '';
+    normaliseScalePitchWorld();
+  } else {
+    state.profile.selectedRaga = state.profile.selectedRaga || state.lastSelectedRaga || '';
+    rememberRagaChoice();
+  }
+  state.profile.pitchPath = nextPath;
+}
+
+function setNoteSpelling(spelling = 'sharps') {
+  state.profile.noteSpelling = spelling === 'flats' ? 'flats' : 'sharps';
+  state.profile.keyRoot = normaliseKeyRoot(state.profile.keyRoot || DEFAULT_PROFILE.keyRoot, state.profile.noteSpelling);
+}
+
 function cleanTimeWindow(value = '') {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   if (!text) return 'Open';
@@ -584,6 +1082,170 @@ function tempoGuidance() {
   return 'Fast tempos need simple anchors. Keep the bass/kick logic obvious before adding motion.';
 }
 
+function inferredGearFromInstrument(instrument = '') {
+  const value = String(instrument || '').toLowerCase();
+  const gear = [];
+  if (value.includes('guitar')) gear.push('guitar', 'ampero');
+  if (value.includes('microfreak')) gear.push('microfreak');
+  if (value.includes('ableton') || value.includes('drum rack')) gear.push('ableton');
+  if (value.includes('field')) gear.push('field_recordings');
+  if (value.includes('bass synth') || value.includes('pad') || value.includes('drone synth')) gear.push('ableton', 'microfreak');
+  if (value.includes('hybrid')) gear.push('guitar', 'ableton');
+  return uniqueList(gear.filter((id) => GEAR_WORKFLOWS[id]));
+}
+
+function activeGearIds() {
+  return uniqueList([
+    ...(state.profile.gearFocus || []),
+    ...inferredGearFromInstrument(state.profile.instrument),
+  ]).filter((id) => GEAR_WORKFLOWS[id]);
+}
+
+function gearLabel(id) {
+  return GEAR_WORKFLOWS[id]?.label || id.replaceAll('_', ' ');
+}
+
+function activeGearLabels(limit = 4) {
+  const labels = activeGearIds().map(gearLabel);
+  if (labels.length <= limit) return labels;
+  return [...labels.slice(0, limit), `${labels.length - limit} more`];
+}
+
+function gearContext(stageId = activeStageId()) {
+  const pitchContext = getPitchContext(state.profile, selectedRagaCard());
+  return {
+    stage: STAGE_BY_ID[stageId]?.label?.replace(/^\d+\.\s*/, '') || stageId.replaceAll('_', ' '),
+    keyLabel: currentKeyLabel(),
+    root: pitchContext?.root || state.profile.keyRoot || 'D',
+    notes: pitchContext?.notes?.length ? pitchContext.notes.slice(0, 7).join(', ') : `${state.profile.keyRoot || 'D'} as home`,
+    tempo: state.profile.tempo || 110,
+    groove: state.profile.groove || 'the current groove',
+    section: state.profile.sectionType || 'section',
+  };
+}
+
+function interpolateGearText(text = '', context = gearContext()) {
+  return String(text || '').replace(/\{(\w+)\}/g, (_match, key) => context[key] || '');
+}
+
+function gearAdviceForStage(workflow, stageId) {
+  return workflow?.stages?.[stageId] || workflow?.stages?.default || {
+    focus: workflow?.label || 'Tool move',
+    steps: workflow?.setup || [],
+  };
+}
+
+function syncProfileDomains() {
+  const domains = new Set(['pitch-world', 'rhythm-groove', 'sound-design', 'psychedelic-structure']);
+  activeGearIds().forEach((gearId) => {
+    (GEAR_DOMAIN_HINTS[gearId] || []).forEach((domain) => domains.add(domain));
+  });
+  if (String(state.profile.sectionType || '').toLowerCase().includes('live')) domains.add('live-performance');
+  if (activePitchPath() === 'raga') domains.add('pitch-world');
+  state.profile.domainFilters = [...domains];
+}
+
+function renderGearTile(gear) {
+  const selected = new Set(state.profile.gearFocus || []);
+  const isOn = selected.has(gear.id);
+  return `
+    <label class="gear-tile ${isOn ? 'is-on' : ''}">
+      <input data-profile="gearFocus" type="checkbox" value="${escapeHtml(gear.id)}" ${isOn ? 'checked' : ''}>
+      <span>${escapeHtml(gear.label)}</span>
+      <em>${escapeHtml(GEAR_WORKFLOWS[gear.id]?.role || 'Practical tool for this section.')}</em>
+    </label>
+  `;
+}
+
+function renderGearSetupCard(gearId) {
+  const workflow = GEAR_WORKFLOWS[gearId];
+  if (!workflow) return '';
+  const context = gearContext('section_identity');
+  return `
+    <article class="gear-card">
+      <span>${escapeHtml(workflow.label)}</span>
+      <strong>${escapeHtml(workflow.role)}</strong>
+      <ul>
+        ${(workflow.setup || []).slice(0, 3).map((step) => `<li>${escapeHtml(interpolateGearText(step, context))}</li>`).join('')}
+      </ul>
+    </article>
+  `;
+}
+
+function renderGearSetupPanel() {
+  const activeIds = activeGearIds();
+  const activeLine = activeGearLabels(3).join(', ') || 'Choose tools';
+  const previewCards = activeIds.length
+    ? activeIds.slice(0, 3).map(renderGearSetupCard).join('')
+    : `<div class="gear-card muted-box"><strong>Choose one practical tool.</strong><p>The app will show capture, routing and live-play cues when they matter.</p></div>`;
+  return `
+    <section class="setup-panel setup-gear-panel">
+      <div class="setup-section-head">
+        <span class="mini-label">Tools + capture</span>
+        <h3>${escapeHtml(activeLine)}</h3>
+      </div>
+
+      <label class="select-field"><span>Main playable source</span>
+        <select data-profile="instrument">${optionList(APP_OPTIONS.instruments, state.profile.instrument)}</select>
+      </label>
+
+      <div class="gear-tile-grid" aria-label="Practical gear choices">
+        ${APP_OPTIONS.gear.map(renderGearTile).join('')}
+      </div>
+
+      <details class="gear-details" ${activeIds.length <= 2 ? 'open' : ''}>
+        <summary>Practical setup notes</summary>
+        <div class="gear-preview-list">${previewCards}</div>
+      </details>
+    </section>
+  `;
+}
+
+function renderGearWorkflow(stageId) {
+  const ids = activeGearIds();
+  if (!ids.length) return '';
+  const context = gearContext(stageId);
+  const cards = ids.slice(0, 4).map((gearId) => {
+    const workflow = GEAR_WORKFLOWS[gearId];
+    const advice = gearAdviceForStage(workflow, stageId);
+    const steps = (advice.steps || workflow.setup || []).slice(0, 3);
+    return `
+      <article class="gear-workflow-card">
+        <span>${escapeHtml(workflow.label)}</span>
+        <strong>${escapeHtml(advice.focus || workflow.role)}</strong>
+        <ol>
+          ${steps.map((step) => `<li>${escapeHtml(interpolateGearText(step, context))}</li>`).join('')}
+        </ol>
+      </article>
+    `;
+  }).join('');
+  return `
+    <section class="gear-workflow-strip">
+      <div class="gear-workflow-head">
+        <div>
+          <span class="mini-label">Practical tools</span>
+          <strong>${escapeHtml(context.stage)}</strong>
+        </div>
+        <button type="button" class="btn small" data-refresh="context" data-refresh-mode="gear">Gear ideas</button>
+      </div>
+      <div class="gear-workflow-grid">${cards}</div>
+    </section>
+  `;
+}
+
+function gearWorkflowExport() {
+  const context = gearContext(activeStageId());
+  return activeGearIds().map((gearId) => {
+    const workflow = GEAR_WORKFLOWS[gearId];
+    return {
+      id: gearId,
+      label: workflow.label,
+      role: workflow.role,
+      setup: (workflow.setup || []).map((step) => interpolateGearText(step, context)),
+    };
+  });
+}
+
 function savedSections() {
   return loadSavedPlans();
 }
@@ -592,6 +1254,49 @@ function sectionLabel(section = {}) {
   const profile = section.profile || {};
   const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
   return [profile.sectionType || section.title || 'Section', key, profile.groove].filter(Boolean).join(' · ');
+}
+
+function currentSavedSection() {
+  if (!state.currentSectionId) return null;
+  return arrangementSections().find((section) => section.id === state.currentSectionId) || null;
+}
+
+function profileSetupComplete(profile = state.profile) {
+  const path = profile.pitchPath || (profile.selectedRaga ? 'raga' : 'scale');
+  const hasPitch = path === 'raga'
+    ? Boolean(profile.keyRoot && profile.selectedRaga)
+    : Boolean(profile.keyRoot && profile.pitchWorld);
+  return Boolean(hasPitch && profile.tempo && profile.groove && profile.sectionType);
+}
+
+function nextSectionScreenId(plan = state.plan, profile = state.profile) {
+  if (!profileSetupComplete(profile)) return 'setup';
+  const nextBuild = BUILD_PHASES.find((screen) => (screen.stageIds || []).some((stageId) => !plan?.[stageId]));
+  return nextBuild?.id || BUILD_PHASES[BUILD_PHASES.length - 1].id;
+}
+
+function screenIndexById(screenId = '') {
+  const index = SCREENS.findIndex((screen) => screen.id === screenId);
+  return index >= 0 ? index : 0;
+}
+
+function sectionProgressText(plan = {}) {
+  const count = Object.keys(plan || {}).length;
+  return `${count} / ${STAGES.length} ideas chosen`;
+}
+
+function resumeSectionCandidate() {
+  const saved = currentSavedSection();
+  if (saved) return saved;
+  if (!selectedBuildCount()) return null;
+  return {
+    id: '',
+    title: state.profile.sectionType || 'Draft section',
+    profile: state.profile,
+    plan: state.plan,
+    compositionStatus: inferSectionStatus({ plan: state.plan }),
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 function arrangementSections() {
@@ -605,6 +1310,206 @@ function arrangementSections() {
 
 function sectionForArrangement(sectionId) {
   return arrangementSections().find((section) => section.id === sectionId) || null;
+}
+
+function arrangedSlotSections(song = state.song) {
+  const normalisedSong = normaliseSong(song || createDraftSong());
+  const arrangement = new Map(normalisedSong.arrangement.map((slot) => [slot.id, slot.sectionId]));
+  return ARRANGEMENT_TEMPLATE.map((slot) => ({
+    slot,
+    section: sectionForArrangement(arrangement.get(slot.id)),
+  }));
+}
+
+function arrangementProgress(song = state.song) {
+  const entries = arrangedSlotSections(song);
+  const filled = entries.filter((entry) => entry.section).length;
+  const arranged = entries.filter((entry) => ['arranged', 'mixed'].includes(validSectionStatus(entry.section?.compositionStatus))).length;
+  return { filled, arranged, total: ARRANGEMENT_TEMPLATE.length };
+}
+
+function transitionAdvice(entry, nextEntry) {
+  const slot = entry?.slot;
+  const nextSlot = nextEntry?.slot;
+  const section = entry?.section;
+  const nextSection = nextEntry?.section;
+  if (!slot || !nextSlot) return slot?.exitCue || '';
+  if (!section && !nextSection) return `Sketch how ${slot.label.toLowerCase()} should hand off to ${nextSlot.label.toLowerCase()}.`;
+  if (!section) return `Prepare this slot so ${nextSection?.profile?.sectionType || nextSlot.label} has a clear reason to arrive.`;
+  if (!nextSection) return slot.exitCue;
+  const currentEnergy = section.profile?.energy || slot.energy;
+  const nextEnergy = nextSection.profile?.energy || nextSlot.energy;
+  const currentGroove = section.profile?.groove || state.profile.groove;
+  const nextGroove = nextSection.profile?.groove || state.profile.groove;
+  if (currentEnergy !== nextEnergy) {
+    return `${slot.exitCue} Move from ${currentEnergy.toLowerCase()} to ${nextEnergy.toLowerCase()} by changing one layer first.`;
+  }
+  if (currentGroove !== nextGroove) {
+    return `Keep one anchor while the groove changes from ${currentGroove} to ${nextGroove}.`;
+  }
+  return `Use a shared sound, fill, held note or mute to make ${nextSlot.label.toLowerCase()} feel inevitable.`;
+}
+
+function preferredNextSlot(entries = arrangedSlotSections()) {
+  const byId = new Map(entries.map((entry) => [entry.slot.id, entry]));
+  const anyFilled = entries.some((entry) => entry.section);
+  const orderedIds = anyFilled ? NEXT_SLOT_ORDER : ['main_groove', ...NEXT_SLOT_ORDER.filter((id) => id !== 'main_groove')];
+  return orderedIds.map((id) => byId.get(id)).find((entry) => entry && !entry.section) || entries.find((entry) => !entry.section) || null;
+}
+
+function nearestArrangementSection(entries = [], index = 0) {
+  const before = entries.slice(0, index).reverse().find((entry) => entry.section)?.section;
+  const after = entries.slice(index + 1).find((entry) => entry.section)?.section;
+  return before || after || null;
+}
+
+function nextSlotReason(slot, referenceSection) {
+  const label = slot?.label || 'section';
+  if (!referenceSection) {
+    if (slot?.id === 'main_groove') return 'Start with the body of the track so later sections have something concrete to support, contrast or release.';
+    return `Sketch the ${label.toLowerCase()} as a clear musical job, then place it against the main groove later.`;
+  }
+  const referenceType = referenceSection.profile?.sectionType || referenceSection.title || 'saved section';
+  if (slot?.id === 'intro') return `Use the existing ${referenceType.toLowerCase()} as the destination, then write a doorway that makes its arrival feel earned.`;
+  if (slot?.id === 'breakdown') return `Create contrast around the existing ${referenceType.toLowerCase()} without losing the key world or main pulse.`;
+  if (slot?.id === 'build') return `Turn the existing material into pressure: add density, register lift or motion one layer at a time.`;
+  if (slot?.id === 'peak') return `Make the strongest version of the idea: hook, low end and rhythm should agree before extra colour arrives.`;
+  if (slot?.id === 'outro') return `Let the track release by keeping only the sound that still carries the identity.`;
+  return `Use the existing ${referenceType.toLowerCase()} as context and build the missing ${label.toLowerCase()} with a clear purpose.`;
+}
+
+function buildNextMove(song = state.song) {
+  const entries = arrangedSlotSections(song);
+  const nextEntry = preferredNextSlot(entries);
+  if (!nextEntry) {
+    return {
+      complete: true,
+      title: 'Review the full track',
+      action: 'All core slots are filled. Listen through the arrangement and mark which sections are ready, recorded, arranged or mixed.',
+      slotId: '',
+      slotLabel: 'Full track',
+    };
+  }
+  const index = entries.findIndex((entry) => entry.slot.id === nextEntry.slot.id);
+  const reference = nearestArrangementSection(entries, index);
+  const slot = nextEntry.slot;
+  return {
+    complete: false,
+    title: `Build the ${slot.label.toLowerCase()} next`,
+    action: nextSlotReason(slot, reference),
+    slotId: slot.id,
+    slotLabel: slot.label,
+    energy: slot.energy,
+    keep: reference ? `Keep ${currentKeyLabel()} and the strongest identity from ${sectionLabel(reference)}.` : `Keep ${currentKeyLabel()} and one playable pulse.`,
+    change: slot.purpose,
+  };
+}
+
+function arrangementHandoffs(song = state.song, limit = 4) {
+  const entries = arrangedSlotSections(song);
+  return entries.slice(0, -1).map((entry, index) => {
+    const nextEntry = entries[index + 1];
+    return {
+      fromSlotId: entry.slot.id,
+      from: entry.section ? sectionLabel(entry.section) : entry.slot.label,
+      to: nextEntry.section ? sectionLabel(nextEntry.section) : nextEntry.slot.label,
+      advice: transitionAdvice(entry, nextEntry),
+      ready: Boolean(entry.section || nextEntry.section),
+    };
+  }).filter((handoff) => handoff.ready).slice(0, limit);
+}
+
+function slotBarCue(slotId = '') {
+  if (slotId === 'intro' || slotId === 'outro') return '8 or 16 bars';
+  if (slotId === 'build') return '8 bars with one clear rise';
+  if (slotId === 'breakdown') return '4, 8 or 16 bars of contrast';
+  if (slotId === 'peak') return '16 or 32 bars if the body can carry it';
+  return '16 bars before duplicating';
+}
+
+function abletonPlanningNotes(song = state.song) {
+  const entries = arrangedSlotSections(song);
+  return entries.map((entry, index) => {
+    const section = entry.section;
+    const slot = entry.slot;
+    const profile = section?.profile || state.profile;
+    const sceneName = `${index + 1}. ${slot.label}${section ? ` - ${profile.sectionType || 'section'}` : ' - sketch'}`;
+    return {
+      slotId: slot.id,
+      sceneName,
+      clipLength: slotBarCue(slot.id),
+      capture: section
+        ? `Capture ${sceneName} at ${profile.tempo || state.profile.tempo} BPM with ${profile.groove || state.profile.groove} as the feel.`
+        : `Leave a labelled scene ready for the ${slot.label.toLowerCase()}.`,
+      liveCue: section
+        ? `Make one safe launch path and one playable gesture for ${slot.label.toLowerCase()}.`
+        : slot.cue,
+    };
+  });
+}
+
+function buildTrackIntelligence(song = state.song) {
+  return {
+    nextMove: buildNextMove(song),
+    handoffs: arrangementHandoffs(song),
+    abletonNotes: abletonPlanningNotes(song),
+  };
+}
+
+function buildSectionForSlot(slotId = '') {
+  const slot = arrangementSlotById(slotId);
+  if (!slot) return;
+  const entries = arrangedSlotSections();
+  const index = entries.findIndex((entry) => entry.slot.id === slot.id);
+  const reference = nearestArrangementSection(entries, index);
+  const referenceProfile = reference?.profile || state.profile || DEFAULT_PROFILE;
+  state.currentSectionId = null;
+  state.profile = {
+    ...DEFAULT_PROFILE,
+    ...referenceProfile,
+    sectionType: slot.label,
+    energy: slot.energy,
+    notes: [
+      `Track role: ${slot.purpose}`,
+      `Entry cue: ${slot.entryCue}`,
+      `Handoff cue: ${slot.exitCue}`,
+    ].join(' '),
+    variationOf: '',
+  };
+  syncProfileDomains();
+  state.plan = {};
+  state.phaseFocus = {};
+  state.prompts = [];
+  state.promptMode = 'normal';
+  state.traceIdea = null;
+  state.screenIndex = 1;
+  renderAll();
+  saveAppState();
+  toast(`${slot.label} setup opened`);
+}
+
+function focusTransitionFromSlot(slotId = '') {
+  const entries = arrangedSlotSections();
+  const index = entries.findIndex((entry) => entry.slot.id === slotId);
+  const entry = entries[index];
+  const nextEntry = entries[index + 1];
+  if (!entry || !nextEntry) {
+    toast('Choose an earlier slot for a transition');
+    return;
+  }
+  const from = entry.section ? sectionLabel(entry.section) : entry.slot.label;
+  const to = nextEntry.section ? sectionLabel(nextEntry.section) : nextEntry.slot.label;
+  const advice = transitionAdvice(entry, nextEntry);
+  const existingNotes = String(state.profile.notes || '').trim();
+  state.profile.notes = [existingNotes, `Transition focus: ${from} into ${to}. ${advice}`].filter(Boolean).join(' ');
+  state.phaseFocus.arrange = 'transitions';
+  state.prompts = [];
+  state.promptMode = 'arrangement';
+  state.screenIndex = SCREENS.findIndex((screen) => screen.id === 'arrange');
+  if (state.screenIndex < 0) state.screenIndex = SCREENS.length - 1;
+  renderAll();
+  saveAppState();
+  refreshPrompts({ inspiration: true, mode: 'arrangement' });
 }
 
 function slotForSection(section = {}) {
@@ -653,6 +1558,81 @@ function setArrangementSlot(slotId, sectionId = '') {
   };
   saveAppState();
   renderAll();
+}
+
+function setSectionStatus(sectionId, status = 'sketch') {
+  if (!sectionId) return;
+  const cleanStatus = validSectionStatus(status);
+  const song = normaliseSong(state.song || createDraftSong());
+  state.song = {
+    ...song,
+    sections: song.sections.map((section) => section.id === sectionId ? { ...section, compositionStatus: cleanStatus } : section),
+    updatedAt: new Date().toISOString(),
+  };
+  saveAppState();
+  renderAll();
+  toast(`${statusLabel(cleanStatus)} status saved`);
+}
+
+function variationSectionType(fromType = '', targetSlotId = '') {
+  const targetSlot = arrangementSlotById(targetSlotId);
+  if (targetSlot) return targetSlot.label;
+  const sectionType = String(fromType || '').toLowerCase();
+  if (sectionType.includes('main groove')) return 'Build';
+  if (sectionType.includes('build')) return 'Drop / peak';
+  if (sectionType.includes('breakdown')) return 'Build';
+  if (sectionType.includes('intro')) return 'Main groove';
+  if (sectionType.includes('drop') || sectionType.includes('peak')) return 'Outro';
+  return fromType || 'Main groove';
+}
+
+function createVariationFromSection(sectionId, targetSlotId = '') {
+  const source = sectionForArrangement(sectionId);
+  if (!source) {
+    toast('Choose a saved section first');
+    return;
+  }
+  const sourceProfile = { ...DEFAULT_PROFILE, ...(source.profile || {}) };
+  const nextSectionType = variationSectionType(sourceProfile.sectionType, targetSlotId);
+  const targetSlot = arrangementSlotById(targetSlotId);
+  const variationBrief = targetSlot
+    ? [
+      `Variation target: ${targetSlot.label}.`,
+      `Purpose: ${targetSlot.purpose}`,
+      `Entry: ${targetSlot.entryCue}`,
+      `Handoff: ${targetSlot.exitCue}`,
+    ]
+    : ['Variation target: keep the recognisable part and change only one musical dimension.'];
+  state.currentSectionId = null;
+  state.profile = {
+    ...sourceProfile,
+    sectionType: nextSectionType,
+    energy: targetSlot?.energy || sourceProfile.energy,
+    variationOf: source.id,
+    notes: [
+      `Variation of ${sectionLabel(source)}.`,
+      ...variationBrief,
+      'Change one thing first: energy, texture, rhythm, register or density.',
+      sourceProfile.notes || '',
+    ].filter(Boolean).join(' '),
+  };
+  syncProfileDomains();
+  state.plan = { ...(source.plan || {}) };
+  state.phaseFocus = {};
+  state.prompts = [];
+  state.promptMode = 'normal';
+  state.traceIdea = null;
+  state.screenIndex = 1;
+  if (targetSlotId) {
+    const song = normaliseSong(state.song || createDraftSong());
+    state.song = {
+      ...song,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+  renderAll();
+  saveAppState();
+  toast('Variation opened for editing');
 }
 
 function setUtilityPanel(panel = 'section', open = true) {
@@ -713,6 +1693,8 @@ function renderSectionSummary() {
     ['Tempo', p.tempo ? `${p.tempo} BPM` : '—'],
     ['Groove', p.groove],
     ['Section', p.sectionType],
+    ['Source', p.instrument],
+    ['Tools', activeGearLabels(3).join(', ') || '—'],
     ['Mood', p.mood],
     ['Energy', p.energy],
   ];
@@ -730,33 +1712,144 @@ function arrangementOptions(selectedId = '') {
   return options.join('');
 }
 
+function renderTrackNextMove({ compact = false } = {}) {
+  const intelligence = buildTrackIntelligence();
+  const nextMove = intelligence.nextMove;
+  const handoffs = intelligence.handoffs || [];
+  const abletonNotes = intelligence.abletonNotes || [];
+  return `
+    <section class="track-next-move ${compact ? 'compact' : ''}">
+      <div>
+        <span class="mini-label">Next useful move</span>
+        <h4>${escapeHtml(nextMove.title)}</h4>
+        <p>${escapeHtml(nextMove.action)}</p>
+        ${nextMove.complete ? '' : `
+          <div class="next-move-meta">
+            <span>${escapeHtml(nextMove.energy || 'Flexible energy')}</span>
+            <span>${escapeHtml(nextMove.change || '')}</span>
+          </div>
+        `}
+      </div>
+      <div class="next-move-actions">
+        ${nextMove.slotId ? `<button type="button" class="btn primary small" data-build-slot="${escapeHtml(nextMove.slotId)}">Build ${escapeHtml(nextMove.slotLabel)}</button>` : ''}
+        ${handoffs[0] ? `<button type="button" class="btn small" data-transition-slot="${escapeHtml(handoffs[0].fromSlotId)}">Transition ideas</button>` : ''}
+      </div>
+      ${compact ? '' : `
+        <div class="handoff-list">
+          ${handoffs.length ? handoffs.map((handoff) => `
+            <article>
+              <strong>${escapeHtml(handoff.from)} into ${escapeHtml(handoff.to)}</strong>
+              <p>${escapeHtml(handoff.advice)}</p>
+              <button type="button" class="btn small" data-transition-slot="${escapeHtml(handoff.fromSlotId)}">Work this handoff</button>
+            </article>
+          `).join('') : `<article><strong>Transition map</strong><p>Save or place sections, then this area will suggest practical handoffs.</p></article>`}
+        </div>
+        <details class="ableton-notes">
+          <summary>Ableton planning notes</summary>
+          <div>
+            ${abletonNotes.map((note) => `
+              <article>
+                <strong>${escapeHtml(note.sceneName)}</strong>
+                <p>${escapeHtml(note.clipLength)} · ${escapeHtml(note.capture)}</p>
+                <em>${escapeHtml(note.liveCue)}</em>
+              </article>
+            `).join('')}
+          </div>
+        </details>
+      `}
+    </section>
+  `;
+}
+
+function renderTrackMiniMap() {
+  const song = normaliseSong(state.song || createDraftSong());
+  const arrangement = new Map(song.arrangement.map((slot) => [slot.id, slot.sectionId]));
+  const entries = ARRANGEMENT_TEMPLATE.map((slot) => ({
+    slot,
+    sectionId: arrangement.get(slot.id) || '',
+    section: sectionForArrangement(arrangement.get(slot.id) || ''),
+  }));
+  const progress = arrangementProgress(song);
+  return `
+    <section class="track-mini-map">
+      <div class="track-mini-head">
+        <div>
+          <span class="mini-label">Track map</span>
+          <h3>${escapeHtml(song.title || 'New Song')}</h3>
+          <p>${progress.filled} / ${progress.total} slots filled · ${progress.arranged} arranged or mixed</p>
+        </div>
+        <button type="button" class="btn small" data-open-panel="track">Open map</button>
+      </div>
+      <div class="mini-slot-grid" aria-label="Track slots">
+        ${entries.map(({ slot, section }) => `
+          <button type="button" class="mini-slot ${section ? 'is-filled' : ''}" ${section ? `data-open-section="${escapeHtml(section.id)}"` : `data-build-slot="${escapeHtml(slot.id)}"`}>
+            <span>${escapeHtml(slot.label)}</span>
+            <strong>${escapeHtml(section ? (section.profile?.sectionType || section.title || 'Saved section') : slot.energy)}</strong>
+          </button>
+        `).join('')}
+      </div>
+      ${renderTrackNextMove({ compact: true })}
+    </section>
+  `;
+}
+
 function renderTrackArrangement({ compact = false } = {}) {
   const song = normaliseSong(state.song || createDraftSong());
   const arrangement = new Map(song.arrangement.map((slot) => [slot.id, slot.sectionId]));
+  const entries = ARRANGEMENT_TEMPLATE.map((slot) => ({
+    slot,
+    sectionId: arrangement.get(slot.id) || '',
+    section: sectionForArrangement(arrangement.get(slot.id) || ''),
+  }));
+  const progress = arrangementProgress(song);
   return `
     <section class="track-arrangement ${compact ? 'compact' : ''}">
       <div class="track-arrangement-head">
         <div>
           <span class="mini-label">Track map</span>
           <h3>${escapeHtml(song.title || 'New Song')}</h3>
+          <p>${progress.filled} / ${progress.total} slots filled · ${progress.arranged} arranged or mixed</p>
         </div>
-        <button type="button" class="btn small" data-auto-arrange>Auto arrange</button>
+        <div class="track-actions">
+          <button type="button" class="btn small" data-auto-arrange>Auto arrange</button>
+        </div>
       </div>
+      <div class="track-guide">
+        <strong>Arrangement focus</strong>
+        <p>Place only useful sections, then use variation and transition notes to make the full track flow.</p>
+      </div>
+      ${renderTrackNextMove({ compact })}
       <div class="arrangement-slots">
-        ${ARRANGEMENT_TEMPLATE.map((slot, index) => {
-          const sectionId = arrangement.get(slot.id) || '';
-          const section = sectionForArrangement(sectionId);
+        ${entries.map(({ slot, sectionId, section }, index) => {
+          const status = validSectionStatus(section?.compositionStatus);
+          const nextEntry = entries[index + 1];
+          const advice = transitionAdvice({ slot, section }, nextEntry);
           return `
             <article class="arrangement-slot ${section ? 'is-filled' : ''}">
               <div class="slot-number">${index + 1}</div>
               <div class="slot-main">
-                <span>${escapeHtml(slot.label)}</span>
+                <div class="slot-title-line">
+                  <span>${escapeHtml(slot.label)}</span>
+                  <small>${escapeHtml(section ? statusLabel(status) : slot.energy)}</small>
+                </div>
                 <strong>${escapeHtml(section ? (section.summary?.title || section.title || sectionLabel(section)) : slot.cue)}</strong>
-                ${section ? `<em>${escapeHtml(sectionLabel(section))}</em>` : `<em>${escapeHtml(slot.cue)}</em>`}
+                <em>${escapeHtml(section ? sectionLabel(section) : slot.purpose)}</em>
+                <div class="slot-guidance">
+                  <p><b>Entry:</b> ${escapeHtml(slot.entryCue)}</p>
+                  <p><b>${nextEntry ? 'Handoff' : 'Finish'}:</b> ${escapeHtml(advice)}</p>
+                </div>
                 <select data-arrangement-slot="${escapeHtml(slot.id)}">${arrangementOptions(sectionId)}</select>
+                ${section ? `
+                  <label class="slot-status-field">
+                    <span>Status</span>
+                    <select data-section-status="${escapeHtml(section.id)}">${statusOptions(status)}</select>
+                    <em>${escapeHtml(statusCue(status))}</em>
+                  </label>
+                ` : ''}
               </div>
               <div class="slot-actions">
                 ${section ? `<button type="button" class="btn small" data-open-arrangement-section="${escapeHtml(section.id)}">Open</button>` : ''}
+                ${section ? `<button type="button" class="btn small" data-create-variation="${escapeHtml(section.id)}" data-variation-slot="${escapeHtml(nextEntry?.slot?.id || '')}">Variation</button>` : ''}
                 ${section ? `<button type="button" class="btn small" data-clear-arrangement-slot="${escapeHtml(slot.id)}">Clear</button>` : ''}
               </div>
             </article>
@@ -769,7 +1862,41 @@ function renderTrackArrangement({ compact = false } = {}) {
 
 function renderTrackPanel() {
   if (!els.trackPanel) return;
-  els.trackPanel.innerHTML = renderTrackArrangement({ compact: true });
+  els.trackPanel.innerHTML = renderTrackArrangement({ compact: false });
+}
+
+function renderCurrentSectionResume() {
+  const section = resumeSectionCandidate();
+  if (!section) return '';
+  const profile = { ...DEFAULT_PROFILE, ...(section.profile || {}) };
+  const plan = section.id && section.id === state.currentSectionId ? state.plan : (section.plan || state.plan);
+  const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim() || 'Open key world';
+  const status = statusLabel(section.compositionStatus || inferSectionStatus({ plan }));
+  const nextScreenId = nextSectionScreenId(plan, profile);
+  const nextScreen = SCREENS[screenIndexById(nextScreenId)];
+  const title = section.title || section.summary?.title || profile.sectionType || 'Current section';
+  const updated = section.updatedAt ? new Date(section.updatedAt).toLocaleDateString('en-GB') : 'unsaved draft';
+  const continueAttr = section.id ? `data-continue-section="${escapeHtml(section.id)}"` : 'data-continue-current';
+  return `
+    <section class="resume-section-card">
+      <div class="resume-copy">
+        <span class="mini-label">Resume</span>
+        <h3>${escapeHtml(title)}</h3>
+        <p>${escapeHtml([profile.sectionType, key, profile.groove].filter(Boolean).join(' · '))}</p>
+      </div>
+      <div class="resume-metrics">
+        <div><span>Status</span><strong>${escapeHtml(status)}</strong></div>
+        <div><span>Progress</span><strong>${escapeHtml(sectionProgressText(plan))}</strong></div>
+        <div><span>Next</span><strong>${escapeHtml(nextScreen?.label || 'Setup')}</strong></div>
+        <div><span>Updated</span><strong>${escapeHtml(updated)}</strong></div>
+      </div>
+      <div class="resume-actions">
+        <button type="button" class="btn primary small" ${continueAttr}>Continue composing</button>
+        <button type="button" class="btn small" data-step-target="setup">Setup</button>
+        <button type="button" class="btn small" data-open-panel="plan">Chosen ideas</button>
+      </div>
+    </section>
+  `;
 }
 
 function renderPlanSummary() {
@@ -815,50 +1942,67 @@ function renderSongEntry() {
   const savedById = new Map(sections.map((section) => [section.id, section]));
   const songSections = (state.song?.sections || []).slice(0, 12);
   els.wizardBody.innerHTML = `
-    <div class="song-entry">
-      <button type="button" class="entry-card primary-entry" data-new-song>
-        <span class="mini-label">Start fresh</span>
-        <strong>New Song</strong>
-        <em>Begin with one section, then save it into the local song workspace.</em>
-      </button>
+    <div class="song-entry song-entry-polished">
+      <div class="song-choice-row">
+        <button type="button" class="entry-card primary-entry" data-new-song>
+          <span class="mini-label">Start fresh</span>
+          <strong>New Song</strong>
+          <em>Begin with one useful section, then let the track map suggest the next musical move.</em>
+        </button>
 
-      <div class="entry-card current-song-entry">
-        <span class="mini-label">Current song</span>
-        <label class="song-title-field">
-          <span>Song title</span>
-          <input data-song-title type="text" value="${escapeHtml(state.song?.title || 'New Song')}" />
-        </label>
-        <button type="button" class="btn primary small" data-new-section>New section in this song</button>
-        ${renderTrackArrangement({ compact: true })}
-        <span class="mini-label section-list-label">Song sections</span>
-        <div class="section-list">
-          ${songSections.length ? songSections.map((section) => {
-            const saved = savedById.get(section.id);
-            const profile = saved?.profile || section.profile || {};
-            const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
-            return `
-              <button type="button" class="section-row ${section.id === state.currentSectionId ? 'is-current' : ''}" data-open-section="${escapeHtml(section.id)}">
-                <span>${escapeHtml(section.id === state.currentSectionId ? 'Current section' : 'Song section')}</span>
-                <strong>${escapeHtml(section.title || saved?.summary?.title || profile.sectionType || 'Saved section')}</strong>
-                <em>${escapeHtml([profile.sectionType, key, profile.groove].filter(Boolean).join(' · ') || 'Saved locally')}</em>
+        <div class="entry-card existing-entry">
+          <div class="entry-card-head">
+            <div>
+              <span class="mini-label">Local workspace</span>
+              <strong>Existing Song</strong>
+              <em>Open a saved section and continue the track from there.</em>
+            </div>
+            <button type="button" class="btn small" data-open-panel="track">Track drawer</button>
+          </div>
+          <div class="section-list compact-list">
+            ${sections.length ? sections.map((section) => `
+              <button type="button" class="section-row" data-open-section="${escapeHtml(section.id)}">
+                <span>${escapeHtml(`${section.summary?.title || section.profile?.sectionType || 'Saved section'} · ${statusLabel(section.compositionStatus)}`)}</span>
+                <strong>${escapeHtml(section.profile ? `${section.profile.sectionType || 'Section'} · ${section.profile.keyRoot || ''} ${section.profile.selectedRaga || section.profile.pitchWorld || ''}` : 'Saved section')}</strong>
+                <em>${escapeHtml(section.updatedAt ? `Updated ${new Date(section.updatedAt).toLocaleDateString('en-GB')}` : 'Saved locally')}</em>
               </button>
-            `;
-          }).join('') : `<div class="mini-card muted-box">No sections in this song yet. Save the first section when it has a useful shape.</div>`}
+            `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`}
+          </div>
         </div>
       </div>
 
-      <div class="entry-card existing-entry">
-        <span class="mini-label">Local workspace</span>
-        <strong>Existing Song</strong>
-        <em>Open a saved section and keep building the track from there.</em>
-        <div class="section-list">
-          ${sections.length ? sections.map((section) => `
-            <button type="button" class="section-row" data-open-section="${escapeHtml(section.id)}">
-              <span>${escapeHtml(section.summary?.title || section.profile?.sectionType || 'Saved section')}</span>
-              <strong>${escapeHtml(section.profile ? `${section.profile.sectionType || 'Section'} · ${section.profile.keyRoot || ''} ${section.profile.selectedRaga || section.profile.pitchWorld || ''}` : 'Saved section')}</strong>
-              <em>${escapeHtml(section.updatedAt ? `Updated ${new Date(section.updatedAt).toLocaleDateString('en-GB')}` : 'Saved locally')}</em>
-            </button>
-          `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`}
+      <div class="entry-card current-song-entry song-flow-card">
+        <div class="song-flow-head">
+          <label class="song-title-field">
+            <span>Current song</span>
+            <input data-song-title type="text" value="${escapeHtml(state.song?.title || 'New Song')}" />
+          </label>
+          <div class="song-flow-actions">
+            <button type="button" class="btn primary small" data-new-section>New section</button>
+            <button type="button" class="btn small" data-open-panel="track">Track map</button>
+          </div>
+        </div>
+        ${renderCurrentSectionResume()}
+        <div class="song-flow-columns">
+          ${renderTrackMiniMap()}
+          <div class="song-section-panel">
+            <span class="mini-label section-list-label">Song sections</span>
+            <div class="section-list compact-list">
+              ${songSections.length ? songSections.map((section) => {
+                const saved = savedById.get(section.id);
+                const profile = saved?.profile || section.profile || {};
+                const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
+                const status = statusLabel(section.compositionStatus || saved?.compositionStatus);
+                return `
+                  <button type="button" class="section-row ${section.id === state.currentSectionId ? 'is-current' : ''}" data-open-section="${escapeHtml(section.id)}">
+                    <span>${escapeHtml(section.id === state.currentSectionId ? 'Current section' : `Song section · ${status}`)}</span>
+                    <strong>${escapeHtml(section.title || saved?.summary?.title || profile.sectionType || 'Saved section')}</strong>
+                    <em>${escapeHtml([profile.sectionType, key, profile.groove].filter(Boolean).join(' · ') || 'Saved locally')}</em>
+                  </button>
+                `;
+              }).join('') : `<div class="mini-card muted-box">No sections in this song yet. Save the first section when it has a useful shape.</div>`}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -873,7 +2017,7 @@ function renderSetup() {
   const selectedRaga = selectedRagaCard();
   const pitchContext = getPitchContext(state.profile, selectedRaga);
   const pitchSummary = formatPitchSummary(state.profile, selectedRaga);
-  const keyRoots = APP_OPTIONS.keyRoots || ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const keyRoots = getKeyRootOptions(state.profile.noteSpelling);
   const scaleWorlds = (APP_OPTIONS.pitchWorlds || []).filter((world) => world !== 'Raga-driven');
   if (state.profile.pitchWorld && !scaleWorlds.includes(state.profile.pitchWorld)) scaleWorlds.push(state.profile.pitchWorld);
   const keyLabel = currentKeyLabel();
@@ -911,6 +2055,8 @@ function renderSetup() {
             <strong>Behaviour first</strong>
           </button>
         </div>
+
+        ${renderNoteSpellingControl()}
 
         <div class="note-grid compact" role="list" aria-label="Choose tonic note">
           ${keyRoots.map((note) => `
@@ -963,6 +2109,8 @@ function renderSetup() {
           <div><span>Groove</span><p>${escapeHtml(grooveGuidance())}</p></div>
         </div>
       </section>
+
+      ${renderGearSetupPanel()}
     </div>
   `;
 }
@@ -973,7 +2121,7 @@ function renderPitch() {
   const selectedRaga = selectedRagaCard();
   const pitchContext = getPitchContext(state.profile, selectedRaga);
   const pitchSummary = formatPitchSummary(state.profile, selectedRaga);
-  const keyRoots = APP_OPTIONS.keyRoots || ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const keyRoots = getKeyRootOptions(state.profile.noteSpelling);
   const scaleWorlds = (APP_OPTIONS.pitchWorlds || []).filter((world) => world !== 'Raga-driven');
   if (state.profile.pitchWorld && !scaleWorlds.includes(state.profile.pitchWorld)) scaleWorlds.push(state.profile.pitchWorld);
   const keyLabel = currentKeyLabel();
@@ -1018,6 +2166,7 @@ function renderPitch() {
 
       <div class="field-card wide pitch-note-card">
         <h3>2. Choose the home note</h3>
+        ${renderNoteSpellingControl()}
         <div class="note-grid" role="list" aria-label="Choose tonic note">
           ${keyRoots.map((note) => `
             <button type="button" class="note-button ${note === state.profile.keyRoot ? 'is-selected' : ''}" data-key-root="${escapeHtml(note)}">
@@ -1244,6 +2393,11 @@ function renderPromptCard(idea, index) {
       </div>
       <div class="idea-card-grid">
         <div class="idea-main">
+          ${renderPlayFirst(presentation)}
+          <div class="do-now">
+            <span>${escapeHtml(presentation.actionVerb || 'Try now')}</span>
+            <strong>${escapeHtml(presentation.doNow || 'Make the smallest playable version first.')}</strong>
+          </div>
           <p class="prompt-text">${escapeHtml(presentation.action)}</p>
           <ol class="prompt-steps">
             ${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}
@@ -1273,6 +2427,8 @@ function renderBuild() {
   const stage = activeStage(screen);
   const chosen = state.plan[stageId];
   const stageGuide = renderStageGuide(screen, stageId);
+  const composerNudge = renderComposerNudge(stageId);
+  const gearWorkflow = renderGearWorkflow(stageId);
   const focusTabs = (screen.stageIds || []).map((id) => {
     const item = STAGE_BY_ID[id];
     const label = item?.label.replace(/^\d+\.\s*/, '') || id.replaceAll('_', ' ');
@@ -1285,6 +2441,8 @@ function renderBuild() {
       <div class="build-workspace">
         <div class="phase-focus">${focusTabs}</div>
         ${stageGuide}
+        ${composerNudge}
+        ${gearWorkflow}
         <div class="info-card wide chosen-idea prompt-card">
           <span class="mini-label">Chosen for ${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</span>
           <h3>${escapeHtml(presentation.title)}</h3>
@@ -1295,6 +2453,11 @@ function renderBuild() {
           </div>
           <div class="idea-card-grid">
             <div class="idea-main">
+              ${renderPlayFirst(presentation)}
+              <div class="do-now">
+                <span>${escapeHtml(presentation.actionVerb || 'Try now')}</span>
+                <strong>${escapeHtml(presentation.doNow || 'Make the smallest playable version first.')}</strong>
+              </div>
               <p class="prompt-text" style="margin-top:8px">${escapeHtml(presentation.action)}</p>
               <ol class="prompt-steps">${presentation.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol>
             </div>
@@ -1303,7 +2466,8 @@ function renderBuild() {
           <div class="prompt-actions" style="margin-top:14px">
             <button class="btn small" data-source="${escapeHtml(ideaRef(chosen))}">Source</button>
             <button class="btn small ${feedback.pinned ? 'is-active' : ''}" data-feedback="pin" data-feedback-idea="${escapeHtml(ideaRef(chosen))}">${feedback.pinned ? 'Pinned' : 'Pin'}</button>
-            <button class="btn danger small" data-rechoose="${escapeHtml(stageId)}">Another idea</button>
+            <button class="btn small" data-rechoose="${escapeHtml(stageId)}" data-rechoose-mode="fresh">Fresh source</button>
+            <button class="btn danger small" data-rechoose="${escapeHtml(stageId)}" data-rechoose-mode="normal">Replace idea</button>
           </div>
         </div>
       </div>
@@ -1315,7 +2479,8 @@ function renderBuild() {
       <div class="build-workspace">
         <div class="phase-focus">${focusTabs}</div>
         ${stageGuide}
-        ${renderContextActions(stageId)}
+        ${composerNudge}
+        ${gearWorkflow}
         <div class="info-card wide">
           <span class="mini-label">${escapeHtml(screen.label)}</span>
           <h3>${escapeHtml(stage.label.replace(/^\d+\.\s*/, ''))}</h3>
@@ -1330,7 +2495,8 @@ function renderBuild() {
     <div class="build-workspace">
       <div class="phase-focus">${focusTabs}</div>
       ${stageGuide}
-      ${renderContextActions(stageId)}
+      ${composerNudge}
+      ${gearWorkflow}
       <div class="prompt-scroll stack">${state.prompts.map(renderPromptCard).join('')}</div>
     </div>
   `;
@@ -1370,21 +2536,20 @@ function setProfileFromInput(input) {
     else current.delete(input.value);
     state.profile[name] = [...current];
   } else if (name === 'noteSpelling') {
-    state.profile.noteSpelling = input.value;
-    state.profile.keyRoot = normaliseKeyRoot(state.profile.keyRoot || DEFAULT_PROFILE.keyRoot, state.profile.noteSpelling);
+    setNoteSpelling(input.value);
   } else if (name === 'tempo') {
     state.profile[name] = Number(input.value || 0);
   } else {
     state.profile[name] = input.value;
     if (name === 'pitchWorld') {
-      state.profile.pitchPath = 'scale';
-      state.profile.selectedRaga = '';
-      normaliseScalePitchWorld();
+      setPitchPath('scale');
     }
     if (name === 'selectedRaga') {
       state.profile.pitchPath = 'raga';
+      rememberRagaChoice(input.value);
     }
   }
+  syncProfileDomains();
   renderSectionSummary();
   renderStepStrip();
   refreshExportLinks();
@@ -1468,6 +2633,8 @@ function startNewSong() {
   state.song = createDraftSong();
   state.currentSectionId = null;
   state.profile = { ...DEFAULT_PROFILE };
+  state.lastSelectedRaga = '';
+  syncProfileDomains();
   state.plan = {};
   state.phaseFocus = {};
   state.prompts = [];
@@ -1492,10 +2659,13 @@ function startNewSectionForSong() {
     mood: state.profile.mood,
     energy: state.profile.energy,
     instrument: state.profile.instrument,
-    gearFocus: state.profile.gearFocus,
-    domainFilters: state.profile.domainFilters,
+    gearFocus: [...(state.profile.gearFocus || [])],
+    domainFilters: [...(state.profile.domainFilters || [])],
     notes: '',
+    variationOf: '',
   };
+  rememberRagaChoice();
+  syncProfileDomains();
   state.plan = {};
   state.phaseFocus = {};
   state.prompts = [];
@@ -1516,6 +2686,7 @@ function openSavedSection(id) {
   profile.noteSpelling = profile.noteSpelling || 'sharps';
   profile.keyRoot = normaliseKeyRoot(profile.keyRoot || DEFAULT_PROFILE.keyRoot, profile.noteSpelling);
   profile.pitchPath = profile.pitchPath || (profile.selectedRaga ? 'raga' : 'scale');
+  state.lastSelectedRaga = profile.selectedRaga || state.lastSelectedRaga || '';
   if (profile.pitchPath === 'scale') profile.selectedRaga = '';
   const openedSong = section.song || {
     id: `song_from_${section.id}`,
@@ -1527,19 +2698,21 @@ function openSavedSection(id) {
   state.song = normaliseSong(hasOpenedSection ? openedSong : {
     ...openedSong,
     sections: [
-      {
+      normaliseSectionSummary({
         id: section.id,
         title: section.summary?.title || profile.sectionType || 'Section',
         profile,
         summary: section.summary,
+        compositionStatus: section.compositionStatus,
         createdAt: section.createdAt,
         updatedAt: section.updatedAt,
-      },
+      }),
       ...(openedSong.sections || []),
     ].slice(0, 24),
   });
   state.currentSectionId = section.id;
   state.profile = profile;
+  syncProfileDomains();
   state.plan = section.plan || {};
   state.phaseFocus = {};
   state.prompts = [];
@@ -1550,14 +2723,26 @@ function openSavedSection(id) {
   saveAppState();
 }
 
+function continueSection(sectionId = '') {
+  if (sectionId && sectionId !== state.currentSectionId) {
+    openSavedSection(sectionId);
+  }
+  stepTo(screenIndexById(nextSectionScreenId(state.plan, state.profile)));
+}
+
 function saveCurrentSection() {
   const snapshot = payload();
   state.currentSectionId = snapshot.id;
+  const existingSongSection = (state.song?.sections || []).find((section) => section.id === snapshot.id);
+  const existingSavedSection = savedSections().find((section) => section.id === snapshot.id);
   const sectionSummary = {
     id: snapshot.id,
     title: snapshot.summary?.title || state.profile.sectionType || 'Section',
     profile: snapshot.profile,
     summary: snapshot.summary,
+    compositionStatus: existingSongSection?.compositionStatus || existingSavedSection?.compositionStatus || inferSectionStatus(snapshot),
+    variationOf: existingSongSection?.variationOf || existingSavedSection?.variationOf || state.profile.variationOf || '',
+    arrangementNote: existingSongSection?.arrangementNote || existingSavedSection?.arrangementNote || '',
     createdAt: snapshot.createdAt,
     updatedAt: snapshot.updatedAt,
   };
@@ -1572,11 +2757,19 @@ function saveCurrentSection() {
   const updatedSong = autoPlaceSectionInSong(updatedSongBase, sectionSummary);
   state.song = updatedSong;
   snapshot.song = updatedSong;
-  savePlanSnapshot(snapshot);
-  saveAppState();
-  renderSectionSummary();
-  renderPlanSummary();
-  refreshExportLinks();
+  snapshot.compositionStatus = sectionSummary.compositionStatus;
+  snapshot.variationOf = sectionSummary.variationOf;
+  snapshot.arrangementNote = sectionSummary.arrangementNote;
+  try {
+    savePlanSnapshot(snapshot);
+    saveAppState();
+  } catch (error) {
+    console.error(error);
+    renderAll();
+    toast('Could not save locally. Export a copy instead.');
+    return;
+  }
+  renderAll();
   toast('Saved locally');
 }
 
@@ -1590,6 +2783,12 @@ function renderIdeaResults(results = []) {
       <div class="result-card">
         <span>Book ${idea.bookNumber} · ${escapeHtml((idea.stageBucket || '').replaceAll('_', ' '))}</span>
         <p>${escapeHtml(presentation.action)}</p>
+        ${presentation.playFirst ? `
+          <div class="result-play-first">
+            <strong>${escapeHtml(presentation.playFirst.headline)}</strong>
+            <em>${escapeHtml(presentation.playFirst.noteCue || presentation.playFirst.check || '')}</em>
+          </div>
+        ` : ''}
         <p class="result-explain">${escapeHtml(presentation.plainMeaning || '')}</p>
         <div class="chips" style="margin-top:8px">
           ${feedback.pinned ? `<span class="chip idea-tag">pinned</span>` : ''}
@@ -1637,8 +2836,24 @@ async function showContextualResults({ random = false } = {}) {
 }
 
 function bindEvents() {
-  const prepareMarkdownExport = (event) => exportPlanMarkdown(payload(), STAGES, event.currentTarget);
-  const prepareJsonExport = (event) => exportPlanJson(payload(), event.currentTarget);
+  const prepareMarkdownExport = (event) => {
+    try {
+      exportPlanMarkdown(payload(), STAGES, event.currentTarget);
+    } catch (error) {
+      event.preventDefault();
+      console.error(error);
+      toast('Markdown export is not ready yet.');
+    }
+  };
+  const prepareJsonExport = (event) => {
+    try {
+      exportPlanJson(payload(), event.currentTarget);
+    } catch (error) {
+      event.preventDefault();
+      console.error(error);
+      toast('JSON export is not ready yet.');
+    }
+  };
 
   document.addEventListener('click', (event) => {
     const feedback = event.target.closest('[data-feedback]');
@@ -1652,6 +2867,21 @@ function bindEvents() {
     const autoArrange = event.target.closest('[data-auto-arrange]');
     if (autoArrange && !els.wizardBody.contains(autoArrange)) {
       autoArrangeSong();
+      return;
+    }
+    const buildSlot = event.target.closest('[data-build-slot]');
+    if (buildSlot && !els.wizardBody.contains(buildSlot)) {
+      buildSectionForSlot(buildSlot.dataset.buildSlot);
+      return;
+    }
+    const transitionSlot = event.target.closest('[data-transition-slot]');
+    if (transitionSlot && !els.wizardBody.contains(transitionSlot)) {
+      focusTransitionFromSlot(transitionSlot.dataset.transitionSlot);
+      return;
+    }
+    const createVariation = event.target.closest('[data-create-variation]');
+    if (createVariation && !els.wizardBody.contains(createVariation)) {
+      createVariationFromSection(createVariation.dataset.createVariation, createVariation.dataset.variationSlot || '');
       return;
     }
     const openArrangement = event.target.closest('[data-open-arrangement-section]');
@@ -1688,6 +2918,11 @@ function bindEvents() {
   });
 
   document.addEventListener('change', (event) => {
+    const statusSelect = event.target.closest('[data-section-status]');
+    if (statusSelect) {
+      setSectionStatus(statusSelect.dataset.sectionStatus, statusSelect.value);
+      return;
+    }
     const arrangementSlot = event.target.closest('[data-arrangement-slot]');
     if (arrangementSlot && !els.wizardBody.contains(arrangementSlot)) {
       setArrangementSlot(arrangementSlot.dataset.arrangementSlot, arrangementSlot.value);
@@ -1739,6 +2974,28 @@ function bindEvents() {
       return;
     }
 
+    const buildSlot = event.target.closest('[data-build-slot]');
+    if (buildSlot) {
+      event.preventDefault();
+      event.stopPropagation();
+      buildSectionForSlot(buildSlot.dataset.buildSlot);
+      return;
+    }
+
+    const transitionSlot = event.target.closest('[data-transition-slot]');
+    if (transitionSlot) {
+      event.preventDefault();
+      event.stopPropagation();
+      focusTransitionFromSlot(transitionSlot.dataset.transitionSlot);
+      return;
+    }
+
+    const createVariation = event.target.closest('[data-create-variation]');
+    if (createVariation) {
+      createVariationFromSection(createVariation.dataset.createVariation, createVariation.dataset.variationSlot || '');
+      return;
+    }
+
     const openArrangement = event.target.closest('[data-open-arrangement-section]');
     if (openArrangement) {
       openSavedSection(openArrangement.dataset.openArrangementSection);
@@ -1769,6 +3026,18 @@ function bindEvents() {
       return;
     }
 
+    const continueSectionButton = event.target.closest('[data-continue-section], [data-continue-current]');
+    if (continueSectionButton) {
+      continueSection(continueSectionButton.dataset.continueSection || '');
+      return;
+    }
+
+    const stepTarget = event.target.closest('[data-step-target]');
+    if (stepTarget) {
+      stepTo(screenIndexById(stepTarget.dataset.stepTarget));
+      return;
+    }
+
     const phaseFocus = event.target.closest('[data-phase-focus]');
     if (phaseFocus) {
       state.phaseFocus[currentScreen().id] = phaseFocus.dataset.phaseFocus;
@@ -1782,11 +3051,32 @@ function bindEvents() {
 
     const pitchPathButton = event.target.closest('[data-pitch-path]');
     if (pitchPathButton) {
-      state.profile.pitchPath = pitchPathButton.dataset.pitchPath;
-      if (state.profile.pitchPath === 'scale') {
-        state.profile.selectedRaga = '';
-        normaliseScalePitchWorld();
-      }
+      setPitchPath(pitchPathButton.dataset.pitchPath);
+      syncProfileDomains();
+      renderBody();
+      renderSectionSummary();
+      renderStepStrip();
+      refreshExportLinks();
+      saveAppState();
+      return;
+    }
+
+    const noteSpellingButton = event.target.closest('[data-note-spelling]');
+    if (noteSpellingButton) {
+      setNoteSpelling(noteSpellingButton.dataset.noteSpelling);
+      renderBody();
+      renderSectionSummary();
+      renderStepStrip();
+      refreshExportLinks();
+      saveAppState();
+      return;
+    }
+
+    const noteSpellingControl = event.target.closest('.note-spelling-control');
+    if (noteSpellingControl) {
+      const rect = noteSpellingControl.getBoundingClientRect();
+      const nextSpelling = event.clientX > rect.left + rect.width / 2 ? 'flats' : 'sharps';
+      setNoteSpelling(nextSpelling);
       renderBody();
       renderSectionSummary();
       renderStepStrip();
@@ -1837,7 +3127,7 @@ function bindEvents() {
       delete state.plan[rechoose.dataset.rechoose];
       renderAll();
       saveAppState();
-      refreshPrompts();
+      refreshPrompts({ inspiration: rechoose.dataset.rechooseMode !== 'normal', mode: rechoose.dataset.rechooseMode || 'normal' });
     }
   });
 

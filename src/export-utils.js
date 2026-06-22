@@ -62,16 +62,57 @@ export function exportPlanMarkdown(payload, stages, trigger) {
     lines.push('## Track arrangement');
     payload.song.arrangement.forEach((slot, index) => {
       const section = sections.get(slot.sectionId);
-      const label = slot.id.replaceAll('_', ' ');
+      const label = slot.label || slot.id.replaceAll('_', ' ');
       if (section) {
         const profile = section.profile || {};
         const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
-        lines.push(`- **${index + 1}. ${label}:** ${section.title || profile.sectionType || 'Section'}${key ? ` — ${key}` : ''}`);
+        const status = section.compositionStatus ? ` · ${section.compositionStatus}` : '';
+        lines.push(`- **${index + 1}. ${label}:** ${section.title || profile.sectionType || 'Section'}${key ? ` — ${key}` : ''}${status}`);
+        if (slot.purpose) lines.push(`  Purpose: ${slot.purpose}`);
+        if (slot.entryCue) lines.push(`  Entry: ${slot.entryCue}`);
+        if (slot.exitCue) lines.push(`  Handoff: ${slot.exitCue}`);
+        if (section.variationOf) lines.push(`  Variation of: ${section.variationOf}`);
       } else {
         lines.push(`- **${index + 1}. ${label}:** —`);
+        if (slot.cue) lines.push(`  Cue: ${slot.cue}`);
+        if (slot.purpose) lines.push(`  Purpose: ${slot.purpose}`);
       }
     });
     lines.push('');
+  }
+  if (payload.trackIntelligence?.nextMove) {
+    const nextMove = payload.trackIntelligence.nextMove;
+    lines.push('## Next composition move');
+    lines.push(`**${nextMove.title}:** ${nextMove.action}`);
+    if (nextMove.keep) lines.push(`- **Keep:** ${nextMove.keep}`);
+    if (nextMove.change) lines.push(`- **Change / purpose:** ${nextMove.change}`);
+    lines.push('');
+  }
+  if (payload.trackIntelligence?.handoffs?.length) {
+    lines.push('## Transition notes');
+    payload.trackIntelligence.handoffs.forEach((handoff) => {
+      lines.push(`- **${handoff.from} into ${handoff.to}:** ${handoff.advice}`);
+    });
+    lines.push('');
+  }
+  if (payload.trackIntelligence?.abletonNotes?.length) {
+    lines.push('## Ableton planning notes');
+    payload.trackIntelligence.abletonNotes.forEach((note) => {
+      lines.push(`- **${note.sceneName}:** ${note.clipLength}. ${note.capture}`);
+      if (note.liveCue) lines.push(`  Live cue: ${note.liveCue}`);
+    });
+    lines.push('');
+  }
+  if (payload.gearWorkflows?.length) {
+    lines.push('## Practical gear workflow');
+    payload.gearWorkflows.forEach((workflow) => {
+      lines.push(`### ${workflow.label}`);
+      lines.push(workflow.role || '');
+      if (workflow.setup?.length) {
+        workflow.setup.forEach((step) => lines.push(`- ${step}`));
+      }
+      lines.push('');
+    });
   }
   lines.push('## Setup');
   Object.entries(payload.profile).forEach(([key, value]) => {
@@ -89,6 +130,20 @@ export function exportPlanMarkdown(payload, stages, trigger) {
     lines.push(`### ${stage.label}`);
     lines.push(item.friendly?.action || item.prompt);
     lines.push('');
+    if (item.friendly?.playFirst) {
+      lines.push(`- **Play first:** ${item.friendly.playFirst.headline}`);
+      if (item.friendly.playFirst.detail) lines.push(`  ${item.friendly.playFirst.detail}`);
+      if (item.friendly.playFirst.noteCue) lines.push(`  Notes: ${item.friendly.playFirst.noteCue}`);
+      if (item.friendly.playFirst.check) lines.push(`  Listen check: ${item.friendly.playFirst.check}`);
+      lines.push('');
+    }
+    if (item.friendly?.doNow || item.friendly?.useCue || item.friendly?.listenFor || item.friendly?.whyHere) {
+      if (item.friendly.doNow) lines.push(`- **Try now:** ${item.friendly.doNow}`);
+      if (item.friendly.useCue) lines.push(`- **Use:** ${item.friendly.useCue}`);
+      if (item.friendly.listenFor) lines.push(`- **Listen for:** ${item.friendly.listenFor}`);
+      if (item.friendly.whyHere) lines.push(`- **Why here:** ${item.friendly.whyHere}`);
+      lines.push('');
+    }
     if (item.friendly?.plainMeaning) {
       lines.push(`**What this means:** ${item.friendly.plainMeaning}`);
       lines.push('');

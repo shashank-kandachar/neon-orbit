@@ -75,23 +75,27 @@ function mergeIdeas(lists = []) {
   return merged;
 }
 
-async function loadStageChunk(stageId) {
-  if (stageChunkCache.has(stageId)) return stageChunkCache.get(stageId);
+async function loadStageChunk(stageId, { full = false } = {}) {
+  const cacheKey = `${stageId}:${full ? 'full' : 'core'}`;
+  if (stageChunkCache.has(cacheKey)) return stageChunkCache.get(cacheKey);
   const manifest = await loadPromptChunkManifest();
   const stageInfo = manifest.stages?.[stageId];
   if (!stageInfo?.path) throw new Error(`No prompt chunk for ${stageId}`);
-  const payload = await getJson(`${PROMPT_CHUNK_BASE}${stageInfo.path}`);
-  const ideas = payload.ideas || [];
+  const paths = full && stageInfo.parts?.length
+    ? stageInfo.parts.map((part) => part.path)
+    : [stageInfo.path];
+  const payloads = await Promise.all(paths.map((path) => getJson(`${PROMPT_CHUNK_BASE}${path}`)));
+  const ideas = mergeIdeas(payloads.map((payload) => payload.ideas || []));
   ideas.forEach(ensureIdeaBlob);
-  stageChunkCache.set(stageId, ideas);
+  stageChunkCache.set(cacheKey, ideas);
   return ideas;
 }
 
-export async function loadIdeasForStages(stageIds = []) {
+export async function loadIdeasForStages(stageIds = [], { full = false } = {}) {
   const ids = uniqueStageIds(stageIds);
   if (!ids.length) return loadIdeas();
   try {
-    const chunks = await Promise.all(ids.map(loadStageChunk));
+    const chunks = await Promise.all(ids.map((stageId) => loadStageChunk(stageId, { full })));
     return mergeIdeas(chunks);
   } catch (error) {
     console.warn('Prompt chunks unavailable; falling back to full prompt pool.', error);
@@ -105,7 +109,7 @@ export async function loadIdeas() {
   try {
     const manifest = await loadPromptChunkManifest();
     const stageIds = Object.keys(manifest.stages || {});
-    const chunks = await Promise.all(stageIds.map(loadStageChunk));
+    const chunks = await Promise.all(stageIds.map((stageId) => loadStageChunk(stageId, { full: true })));
     ideaCache = mergeIdeas(chunks);
   } catch (error) {
     try {

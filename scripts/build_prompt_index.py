@@ -30,6 +30,10 @@ STAGE_ORDER = [
     "finish_review",
 ]
 
+CORE_RECORD_LIMIT = 420
+PART_RECORD_LIMIT = 1200
+SPLIT_RECORD_THRESHOLD = 800
+
 TEXT_FIELDS = [
     "prompt",
     "neonOrbitUse",
@@ -400,6 +404,13 @@ def write_prompt_chunks(payload: dict, chunk_dir: Path) -> None:
 
     for stage in STAGE_ORDER:
         records = payload["stageBuckets"].get(stage, [])
+        for stale_path in stage_dir.glob(f"{stage}.part*.json"):
+            stale_path.unlink()
+        for stale_path in stage_dir.glob(f"{stage}.core.json"):
+            stale_path.unlink()
+
+        should_split = len(records) > SPLIT_RECORD_THRESHOLD
+        core_records = records[:CORE_RECORD_LIMIT] if should_split else records
         stage_path = stage_dir / f"{stage}.json"
         stage_payload = {
             "meta": {
@@ -407,14 +418,44 @@ def write_prompt_chunks(payload: dict, chunk_dir: Path) -> None:
                 "sourceFile": meta["sourceFile"],
                 "stage": stage,
                 "recordCount": len(records),
+                "coreCount": len(core_records),
+                "isCoreChunk": should_split,
                 "note": "Derived stage prompt chunk. The audited compact idea file remains the source of truth.",
             },
-            "ideas": records,
+            "ideas": core_records,
         }
         write_json(stage_path, stage_payload)
+
+        parts = []
+        if should_split:
+            for part_index, offset in enumerate(range(0, len(records), PART_RECORD_LIMIT), start=1):
+                part_records = records[offset:offset + PART_RECORD_LIMIT]
+                part_path = stage_dir / f"{stage}.part{part_index}.json"
+                part_payload = {
+                    "meta": {
+                        "generatedAtUtc": meta["generatedAtUtc"],
+                        "sourceFile": meta["sourceFile"],
+                        "stage": stage,
+                        "recordCount": len(part_records),
+                        "part": part_index,
+                        "partOffset": offset,
+                        "fullStageRecordCount": len(records),
+                        "note": "Derived full-stage prompt part. The audited compact idea file remains the source of truth.",
+                    },
+                    "ideas": part_records,
+                }
+                write_json(part_path, part_payload)
+                parts.append({
+                    "path": f"stages/{part_path.name}",
+                    "recordCount": len(part_records),
+                    "offset": offset,
+                })
+
         stage_manifest[stage] = {
             "path": f"stages/{stage}.json",
             "recordCount": len(records),
+            "coreCount": len(core_records),
+            "parts": parts,
         }
 
     manifest = {

@@ -3,7 +3,7 @@ import {
   ideaClarityScore,
   ideaIsUsable,
   normaliseIdeaPromptKey,
-} from './idea-presenter.js?v=keyfirst3.30';
+} from './idea-presenter.js?v=keyfirst3.55';
 
 const INDEX_CACHE = new WeakMap();
 
@@ -457,6 +457,13 @@ function isStrictRagaRecord(record) {
     || [47, 48, 50].includes(Number(record.bookNumber));
 }
 
+function isGearRecord(record) {
+  if (record.gear?.length) return true;
+  const gearTags = ['guitar', 'ableton', 'microfreak', 'sl-2', 'ampero', 'field sound', 'synth', 'effects'];
+  if (gearTags.some((tag) => record.tagSet.has(tag))) return true;
+  return ['guitar', 'ableton', 'microfreak', 'sl-2', 'slicer', 'ampero', 'pedal', 'field recording', 'effect', 'synth'].some((term) => record.blob.includes(term));
+}
+
 function scoreRecord(record, profile, stageId, tags, options = {}) {
   const mode = options.mode || 'normal';
   const recentIds = options.recentIds || new Set();
@@ -478,6 +485,9 @@ function scoreRecord(record, profile, stageId, tags, options = {}) {
   if (record.idea.prompt.length > 520) score -= 8;
   if (mode === 'raga') {
     score += isRagaRecord(record) ? 28 : -22;
+  }
+  if (mode === 'gear') {
+    score += isGearRecord(record) ? 34 : -18;
   }
   if (recordFeedback.pinned) score += 24;
   if (recordFeedback.usedAt) score -= mode === 'normal' ? 8 : 16;
