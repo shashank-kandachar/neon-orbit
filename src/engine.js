@@ -1,5 +1,5 @@
-import { ideaClarityScore } from './idea-presenter.js?v=keyfirst3.55';
-import { searchIdeaIndex, selectContextualIdeas } from './idea-index.js?v=keyfirst3.55';
+import { ideaClarityScore } from './idea-presenter.js?v=keyfirst3.57';
+import { searchIdeaIndex, selectContextualIdeas } from './idea-index.js?v=keyfirst3.57';
 
 const ENERGY_ALIASES = {
   'low': ['low', 'quiet', 'intimate', 'subtle', 'ambient'],

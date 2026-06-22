@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.55';
-import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.55';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.55';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.55';
-import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.55';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.55';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.55';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.57';
+import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.57';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.57';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.57';
+import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.57';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.57';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.57';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -1875,7 +1875,6 @@ function renderCurrentSectionResume() {
   const nextScreenId = nextSectionScreenId(plan, profile);
   const nextScreen = SCREENS[screenIndexById(nextScreenId)];
   const title = section.title || section.summary?.title || profile.sectionType || 'Current section';
-  const updated = section.updatedAt ? new Date(section.updatedAt).toLocaleDateString('en-GB') : 'unsaved draft';
   const continueAttr = section.id ? `data-continue-section="${escapeHtml(section.id)}"` : 'data-continue-current';
   return `
     <section class="resume-section-card">
@@ -1888,7 +1887,6 @@ function renderCurrentSectionResume() {
         <div><span>Status</span><strong>${escapeHtml(status)}</strong></div>
         <div><span>Progress</span><strong>${escapeHtml(sectionProgressText(plan))}</strong></div>
         <div><span>Next</span><strong>${escapeHtml(nextScreen?.label || 'Setup')}</strong></div>
-        <div><span>Updated</span><strong>${escapeHtml(updated)}</strong></div>
       </div>
       <div class="resume-actions">
         <button type="button" class="btn primary small" ${continueAttr}>Continue composing</button>
@@ -1941,37 +1939,35 @@ function renderSongEntry() {
   const sections = savedSections().slice(0, 12);
   const savedById = new Map(sections.map((section) => [section.id, section]));
   const songSections = (state.song?.sections || []).slice(0, 12);
+  const savedSectionRows = sections.length ? sections.map((section) => `
+    <button type="button" class="section-row" data-open-section="${escapeHtml(section.id)}">
+      <span>${escapeHtml(`${section.summary?.title || section.profile?.sectionType || 'Saved section'} · ${statusLabel(section.compositionStatus)}`)}</span>
+      <strong>${escapeHtml(section.profile ? `${section.profile.sectionType || 'Section'} · ${section.profile.keyRoot || ''} ${section.profile.selectedRaga || section.profile.pitchWorld || ''}` : 'Saved section')}</strong>
+      <em>${escapeHtml(section.updatedAt ? `Updated ${new Date(section.updatedAt).toLocaleDateString('en-GB')}` : 'Saved locally')}</em>
+    </button>
+  `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`;
   els.wizardBody.innerHTML = `
-    <div class="song-entry song-entry-polished">
-      <div class="song-choice-row">
-        <button type="button" class="entry-card primary-entry" data-new-song>
+    <div class="song-start-screen">
+      <section class="song-start-choices">
+        <button type="button" class="entry-card start-choice-card primary-entry" data-new-song>
           <span class="mini-label">Start fresh</span>
           <strong>New Song</strong>
-          <em>Begin with one useful section, then let the track map suggest the next musical move.</em>
+          <em>Begin with key, pulse and one useful section.</em>
         </button>
 
-        <div class="entry-card existing-entry">
+        <div class="entry-card start-choice-card existing-entry">
           <div class="entry-card-head">
             <div>
-              <span class="mini-label">Local workspace</span>
+              <span class="mini-label">Keep working</span>
               <strong>Existing Song</strong>
-              <em>Open a saved section and continue the track from there.</em>
+              <em>Resume the current section or open a saved one.</em>
             </div>
-            <button type="button" class="btn small" data-open-panel="track">Track drawer</button>
           </div>
-          <div class="section-list compact-list">
-            ${sections.length ? sections.map((section) => `
-              <button type="button" class="section-row" data-open-section="${escapeHtml(section.id)}">
-                <span>${escapeHtml(`${section.summary?.title || section.profile?.sectionType || 'Saved section'} · ${statusLabel(section.compositionStatus)}`)}</span>
-                <strong>${escapeHtml(section.profile ? `${section.profile.sectionType || 'Section'} · ${section.profile.keyRoot || ''} ${section.profile.selectedRaga || section.profile.pitchWorld || ''}` : 'Saved section')}</strong>
-                <em>${escapeHtml(section.updatedAt ? `Updated ${new Date(section.updatedAt).toLocaleDateString('en-GB')}` : 'Saved locally')}</em>
-              </button>
-            `).join('') : `<div class="mini-card muted-box">No saved sections yet. Start a new song and save the first section.</div>`}
-          </div>
+          ${renderCurrentSectionResume() || `<div class="mini-card muted-box">No active section yet. Open a saved section below or start fresh.</div>`}
         </div>
-      </div>
+      </section>
 
-      <div class="entry-card current-song-entry song-flow-card">
+      <section class="entry-card song-library-card">
         <div class="song-flow-head">
           <label class="song-title-field">
             <span>Current song</span>
@@ -1982,29 +1978,32 @@ function renderSongEntry() {
             <button type="button" class="btn small" data-open-panel="track">Track map</button>
           </div>
         </div>
-        ${renderCurrentSectionResume()}
-        <div class="song-flow-columns">
-          ${renderTrackMiniMap()}
+
+        <div class="song-library-columns">
           <div class="song-section-panel">
-            <span class="mini-label section-list-label">Song sections</span>
+            <span class="mini-label section-list-label">Saved sections</span>
+            <div class="section-list compact-list">${savedSectionRows}</div>
+          </div>
+          <div class="song-section-panel">
+            <span class="mini-label section-list-label">This song</span>
             <div class="section-list compact-list">
               ${songSections.length ? songSections.map((section) => {
-                const saved = savedById.get(section.id);
-                const profile = saved?.profile || section.profile || {};
-                const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
-                const status = statusLabel(section.compositionStatus || saved?.compositionStatus);
-                return `
-                  <button type="button" class="section-row ${section.id === state.currentSectionId ? 'is-current' : ''}" data-open-section="${escapeHtml(section.id)}">
-                    <span>${escapeHtml(section.id === state.currentSectionId ? 'Current section' : `Song section · ${status}`)}</span>
-                    <strong>${escapeHtml(section.title || saved?.summary?.title || profile.sectionType || 'Saved section')}</strong>
-                    <em>${escapeHtml([profile.sectionType, key, profile.groove].filter(Boolean).join(' · ') || 'Saved locally')}</em>
-                  </button>
-                `;
-              }).join('') : `<div class="mini-card muted-box">No sections in this song yet. Save the first section when it has a useful shape.</div>`}
+    const saved = savedById.get(section.id);
+    const profile = saved?.profile || section.profile || {};
+    const key = `${profile.keyRoot || ''} ${profile.selectedRaga || profile.pitchWorld || ''}`.trim();
+    const status = statusLabel(section.compositionStatus || saved?.compositionStatus);
+    return `
+                <button type="button" class="section-row ${section.id === state.currentSectionId ? 'is-current' : ''}" data-open-section="${escapeHtml(section.id)}">
+                  <span>${escapeHtml(section.id === state.currentSectionId ? 'Current section' : `Song section · ${status}`)}</span>
+                  <strong>${escapeHtml(section.title || saved?.summary?.title || profile.sectionType || 'Saved section')}</strong>
+                  <em>${escapeHtml([profile.sectionType, key, profile.groove].filter(Boolean).join(' · ') || 'Saved locally')}</em>
+                </button>
+              `;
+  }).join('') : `<div class="mini-card muted-box">No sections in this song yet. Save the first useful section.</div>`}
             </div>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   `;
 }
@@ -2022,13 +2021,15 @@ function renderSetup() {
   if (state.profile.pitchWorld && !scaleWorlds.includes(state.profile.pitchWorld)) scaleWorlds.push(state.profile.pitchWorld);
   const keyLabel = currentKeyLabel();
   const root = state.profile.keyRoot || 'D';
+  const ragaInfo = pitchContext.ragaInfo || null;
+  const ragaIntervalLabel = ragaInfo?.intervalSource === 'library' ? 'Common intervals' : 'Source-card intervals';
+  const ragaNoteLabel = ragaInfo?.intervalSource === 'library' ? `Notes from ${root} as Sa` : `Practical notes from ${root} as Sa`;
   const intervals = pitchContext.intervals?.length ? pitchContext.intervals.join(' - ') : 'No fixed interval set yet';
   const notes = pitchContext.notes?.length
     ? pitchContext.notes.join(', ')
     : path === 'raga'
-      ? `${root} is Sa/home. Choose a raga to see a common pitch reference.`
+      ? `${root} is Sa/home. Choose a raga to see its note reference.`
       : `${root} is home. Keep the note set small until the section has a clear centre.`;
-  const ragaInfo = pitchContext.ragaInfo || null;
   const ragaFeatures = cleanedRagaFeatures(selectedRaga);
   const sourceLine = selectedRaga?.source ? `Source trace: ${selectedRaga.source}` : '';
   const ragaBehaviour = [
@@ -2078,8 +2079,8 @@ function renderSetup() {
 
         <div class="pitch-guide compact-guide">
           <div class="pitch-detail-grid compact">
-            <div class="pitch-detail"><span>${path === 'raga' ? 'Common intervals' : 'Intervals'}</span><strong>${escapeHtml(intervals)}</strong></div>
-            <div class="pitch-detail"><span>${path === 'raga' ? `Notes from ${root} as Sa` : `Notes in ${keyLabel}`}</span><strong>${escapeHtml(notes)}</strong></div>
+            <div class="pitch-detail"><span>${path === 'raga' ? ragaIntervalLabel : 'Intervals'}</span><strong>${escapeHtml(intervals)}</strong></div>
+            <div class="pitch-detail"><span>${path === 'raga' ? ragaNoteLabel : `Notes in ${keyLabel}`}</span><strong>${escapeHtml(notes)}</strong></div>
           </div>
           ${path === 'raga' && selectedRaga ? `
             <p>${escapeHtml(cleanTimeWindow(ragaInfo?.timeWindow))}</p>
@@ -2126,13 +2127,15 @@ function renderPitch() {
   if (state.profile.pitchWorld && !scaleWorlds.includes(state.profile.pitchWorld)) scaleWorlds.push(state.profile.pitchWorld);
   const keyLabel = currentKeyLabel();
   const root = state.profile.keyRoot || 'D';
+  const ragaInfo = pitchContext.ragaInfo || null;
+  const ragaIntervalLabel = ragaInfo?.intervalSource === 'library' ? 'Common intervals' : 'Source-card intervals';
+  const ragaNoteLabel = ragaInfo?.intervalSource === 'library' ? `Common notes from ${root} as Sa` : `Practical notes from ${root} as Sa`;
   const intervals = pitchContext.intervals?.length ? pitchContext.intervals.join(' - ') : 'No fixed interval set yet';
   const notes = pitchContext.notes?.length
     ? pitchContext.notes.join(', ')
     : path === 'raga'
-      ? `${root} is Sa/home. Choose a raga to see a common pitch reference.`
+      ? `${root} is Sa/home. Choose a raga to see its note reference.`
       : `${root} is home. Keep the note set small until the section has a clear centre.`;
-  const ragaInfo = pitchContext.ragaInfo || null;
   const ragaFeatures = cleanedRagaFeatures(selectedRaga);
   const sourceLine = selectedRaga?.source ? `Source trace: ${selectedRaga.source}` : '';
   const ragaBehaviour = [
@@ -2217,11 +2220,11 @@ function renderPitch() {
             <p>A raga is not just a scale. In ${escapeHtml(keyLabel)}, use ${escapeHtml(root)} as Sa/home and let the source card guide ascent, descent, emphasis, phrase endings and mood.</p>
             <div class="pitch-detail-grid">
               <div class="pitch-detail">
-                <span>Common intervals</span>
+                <span>${escapeHtml(ragaIntervalLabel)}</span>
                 <strong>${escapeHtml(intervals)}</strong>
               </div>
               <div class="pitch-detail">
-                <span>Common notes from ${escapeHtml(root)} as Sa</span>
+                <span>${escapeHtml(ragaNoteLabel)}</span>
                 <strong>${escapeHtml(notes)}</strong>
               </div>
               <div class="pitch-detail">

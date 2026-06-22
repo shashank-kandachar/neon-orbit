@@ -88,6 +88,28 @@ const INTERVAL_TO_DEGREE = {
   '7': 7,
 };
 
+const SARGAM_INTERVALS = {
+  S: ['1'],
+  R: ['2'],
+  G: ['3'],
+  M: ['4'],
+  P: ['5'],
+  D: ['6'],
+  N: ['7'],
+};
+
+const SARGAM_NAMES = {
+  S: 'Sa',
+  R: 'Re',
+  G: 'Ga',
+  M: 'Ma',
+  P: 'Pa',
+  D: 'Dha',
+  N: 'Ni',
+};
+
+const SARGAM_ORDER = ['S', 'R', 'G', 'M', 'P', 'D', 'N'];
+
 const SCALE_LIBRARY = {
   Ionian: {
     intervals: ['1', '2', '3', '4', '5', '6', '7'],
@@ -341,6 +363,108 @@ function cleanRagaLine(value = '') {
     .trim();
 }
 
+function extractSargamDegrees(...values) {
+  const degrees = [];
+  const seen = new Set();
+  const notation = values
+    .map((value) => String(value || '').slice(0, 220))
+    .filter(Boolean)
+    .join(' ');
+  for (const match of notation.matchAll(/[SRGMPDN]/gi)) {
+    const degree = match[0].toUpperCase();
+    if (SARGAM_INTERVALS[degree] && !seen.has(degree)) {
+      seen.add(degree);
+      degrees.push(degree);
+    }
+  }
+  return degrees;
+}
+
+function variantText(ragaCard = null) {
+  return [
+    ragaCard?.summary,
+    ragaCard?.note,
+    ...(ragaCard?.keyFeatures || []),
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function addIntervalVariant(map, degree, interval) {
+  if (!map.has(degree)) map.set(degree, new Set());
+  map.get(degree).add(interval);
+}
+
+function intervalVariantsFromCard(ragaCard = null) {
+  const text = variantText(ragaCard);
+  const variants = new Map();
+  const checks = [
+    ['R', '♭2', /\b(flat|komal)\s+re\b|\bre\s+(is\s+)?(flat|komal)\b/],
+    ['R', '2', /\b(natural|shuddh)\s+re\b|\bre\s+(is\s+)?(natural|shuddh)\b/],
+    ['G', '♭3', /\b(flat|komal)\s+ga\b|\bga\s+(is\s+)?(flat|komal)\b/],
+    ['G', '3', /\b(natural|shuddh)\s+ga\b|\bga\s+(is\s+)?(natural|shuddh)\b/],
+    ['M', '♯4', /\b(sharp|tivra)\s+ma\b|\bma\s+(is\s+)?(sharp|tivra)\b/],
+    ['M', '4', /\b(natural|shuddh)\s+ma\b|\bma\s+(is\s+)?(natural|shuddh)\b/],
+    ['D', '♭6', /\b(flat|komal)\s+dha\b|\bdha\s+(is\s+)?(flat|komal)\b/],
+    ['D', '6', /\b(natural|shuddh)\s+dha\b|\bdha\s+(is\s+)?(natural|shuddh)\b/],
+    ['N', '♭7', /\b(flat|komal)\s+ni\b|\bni\s+(is\s+)?(flat|komal)\b/],
+    ['N', '7', /\b(natural|shuddh)\s+ni\b|\bni\s+(is\s+)?(natural|shuddh)\b/],
+  ];
+  for (const [degree, interval, pattern] of checks) {
+    if (pattern.test(text)) addIntervalVariant(variants, degree, interval);
+  }
+  if (/\bboth\s+(flat|komal)\s+and\s+(natural|shuddh)\s+dha\b|\bboth\s+(natural|shuddh)\s+and\s+(flat|komal)\s+dha\b/.test(text)) {
+    addIntervalVariant(variants, 'D', '♭6');
+    addIntervalVariant(variants, 'D', '6');
+  }
+  if (/\bboth\s+(flat|komal)\s+and\s+(natural|shuddh)\s+ni\b|\bboth\s+(natural|shuddh)\s+and\s+(flat|komal)\s+ni\b/.test(text)) {
+    addIntervalVariant(variants, 'N', '♭7');
+    addIntervalVariant(variants, 'N', '7');
+  }
+  if (/\bboth\s+(flat|komal)\s+and\s+(natural|shuddh)\s+re\b|\bboth\s+(natural|shuddh)\s+and\s+(flat|komal)\s+re\b/.test(text)) {
+    addIntervalVariant(variants, 'R', '♭2');
+    addIntervalVariant(variants, 'R', '2');
+  }
+  if (/\bboth\s+(flat|komal)\s+and\s+(natural|shuddh)\s+ga\b|\bboth\s+(natural|shuddh)\s+and\s+(flat|komal)\s+ga\b/.test(text)) {
+    addIntervalVariant(variants, 'G', '♭3');
+    addIntervalVariant(variants, 'G', '3');
+  }
+  return variants;
+}
+
+function uniqueIntervalsForDegrees(degrees = [], ragaCard = null) {
+  const variants = intervalVariantsFromCard(ragaCard);
+  const intervals = [];
+  const seen = new Set();
+  for (const degree of degrees) {
+    const degreeIntervals = [...(variants.get(degree) || SARGAM_INTERVALS[degree] || [])];
+    for (const interval of degreeIntervals) {
+      if (!seen.has(interval)) {
+        seen.add(interval);
+        intervals.push(interval);
+      }
+    }
+  }
+  return intervals;
+}
+
+function deriveRagaReferenceFromCard(root, ragaCard = null, spelling = 'sharps') {
+  const degrees = extractSargamDegrees(ragaCard?.ascentDescent, ragaCard?.melodicOutline)
+    .sort((a, b) => SARGAM_ORDER.indexOf(a) - SARGAM_ORDER.indexOf(b));
+  const source = degrees.length ? 'source-card' : 'sargam';
+  const referenceDegrees = degrees.length ? degrees : SARGAM_ORDER;
+  const intervals = uniqueIntervalsForDegrees(referenceDegrees, ragaCard);
+  const notes = notesFromIntervals(root, intervals, spelling);
+  const degreeNames = referenceDegrees.map((degree) => SARGAM_NAMES[degree]).join(', ');
+  return {
+    intervals,
+    notes,
+    source,
+    degreeNames,
+    note: source === 'source-card'
+      ? `Source-card note reference: ${degreeNames}. Use the raga behaviour notes for ascent, descent, emphasis and phrase endings.`
+      : `Basic Sa map shown because this card has no clean pitch formula. Use the raga behaviour notes before treating it as a scale.`,
+  };
+}
+
 export function getScaleInfo(profile = {}) {
   const spelling = inferSpelling(profile.keyRoot, profile.noteSpelling);
   const root = normaliseKeyRoot(profile.keyRoot || 'D', spelling);
@@ -366,7 +490,8 @@ export function getRagaInfo(profile = {}, ragaCard = null) {
   const root = normaliseKeyRoot(profile.keyRoot || 'D', spelling);
   const name = profile.selectedRaga || '';
   const reference = RAGA_REFERENCE_LIBRARY[name] || null;
-  const intervals = reference?.intervals || null;
+  const derivedReference = reference ? null : deriveRagaReferenceFromCard(root, ragaCard, spelling);
+  const intervals = reference?.intervals || derivedReference?.intervals || null;
   const notes = intervals ? notesFromIntervals(root, intervals, spelling) : null;
   const sourceAscentDescent = cleanRagaLine(ragaCard?.ascentDescent);
   const sourceOutline = cleanRagaLine(ragaCard?.melodicOutline);
@@ -382,6 +507,8 @@ export function getRagaInfo(profile = {}, ragaCard = null) {
       sourceAscentDescent: '',
       sourceOutline: '',
       referenceNote: '',
+      intervalSource: 'none',
+      degreeNames: '',
       reminder: `Choose a raga, then treat ${root} as Sa/home.`,
       features: [],
     };
@@ -396,7 +523,9 @@ export function getRagaInfo(profile = {}, ragaCard = null) {
     timeWindow: reference?.timeWindow || ragaCard?.timeWindow || '',
     sourceAscentDescent,
     sourceOutline,
-    referenceNote: reference?.note || '',
+    referenceNote: reference?.note || derivedReference?.note || '',
+    intervalSource: reference ? 'library' : derivedReference?.source || 'none',
+    degreeNames: derivedReference?.degreeNames || '',
     reminder: `Treat ${root} as Sa/home. Use the raga card for ascent, descent, important notes and phrase behaviour before adding extra notes.`,
     features: (ragaCard?.keyFeatures || []).slice(0, 3),
   };

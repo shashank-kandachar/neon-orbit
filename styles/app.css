@@ -1126,6 +1126,47 @@ button.entry-card {
   grid-template-rows: minmax(0, 1fr);
 }
 
+.song-start-screen {
+  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.song-start-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.start-choice-card {
+  min-height: 160px;
+}
+
+.start-choice-card > strong {
+  font-size: clamp(1.45rem, 2.4vw, 2rem);
+}
+
+.existing-entry {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.song-library-card {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+}
+
+.song-library-columns {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
 .song-choice-row {
   display: grid;
   grid-template-columns: 1fr;
@@ -1175,7 +1216,7 @@ button.entry-card {
 
 .resume-section-card {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.1fr) auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 0.9fr) auto;
   gap: 12px;
   align-items: center;
   border: 1px solid rgba(202,255,130,0.24);
@@ -1201,7 +1242,7 @@ button.entry-card {
 
 .resume-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
 }
 
@@ -1878,6 +1919,8 @@ button.entry-card {
     flex: 1 1 auto;
   }
   .song-entry,
+  .song-start-choices,
+  .song-library-columns,
   .setup-workspace {
     grid-template-columns: 1fr;
     grid-auto-rows: max-content;

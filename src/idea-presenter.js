@@ -1,4 +1,4 @@
-import { getPitchContext } from './pitch-utils.js?v=keyfirst3.55';
+import { getPitchContext } from './pitch-utils.js?v=keyfirst3.57';
 
 const STAGE_TITLES = {
   section_identity: 'Shape the feeling',
@@ -77,6 +77,7 @@ const JARGON_REPLACEMENTS = [
   [/\bParallel Harmony\b/g, 'Move the same chord shape in parallel'],
   [/\braga-rock\b/gi, 'raga-inspired'],
   [/\bdonor topic or style component\b/gi, 'borrowed colour'],
+  [/\bclear base style\b/gi, 'simple starting groove or sound'],
   [/\btransducer type, pickup pattern, and frequency response\b/gi, 'how the mic hears the sound and how bright it is'],
   [/\bbeginner-clear engineering logic\b/gi, 'simple engineering logic'],
   [/\bconsumer-level tool\b/gi, 'simple everyday tool'],
@@ -107,7 +108,7 @@ const JARGON_REPLACEMENTS = [
   [/\bnegative practice\b/gi, 'repeating the part badly'],
   [/\bbody message\b/gi, 'feel of the body'],
   [/\bnervous system\b/gi, 'listening body'],
-  [/\bliturgical space\b/gi, 'ritual-like space'],
+  [/\bliturgical space\b/gi, 'quiet spacious sound'],
   [/\bposter-like layering\b/gi, 'stacked colourful layers'],
   [/\bimage-to-sound topic mapping\b/gi, 'turning an image idea into sound'],
   [/\bmusical meaning through recognisable signs\b/gi, 'a recognisable musical signal'],
@@ -144,11 +145,14 @@ const JARGON_WORDS = [
   'combinatorial',
   'granular',
   'hexachord',
+  'liturgical',
   'modulation matrix',
   'normalised',
   'normalized',
   'organum',
   'parameter',
+  'borrowed colour',
+  'base style',
   'serial',
   'spectral',
   'tetrachord',
@@ -439,6 +443,22 @@ function simplifyPrompt(rawPrompt = '') {
   let text = stripSourcePreamble(rawPrompt);
 
   text = text.replace(
+    /^(Create|Transform|Design|Build) (?:a|an) (.*?) idea for (?:a|an|the)?\s*(.*?) using (.*?)\. Start from a clear base style, then add one borrowed colour\.?/i,
+    (_match, _verb, mood, goal, method) => {
+      const cleanMood = cleanMaterial(mood);
+      const cleanGoal = cleanMaterial(applyGlossary(goal || 'ending'));
+      const cleanMethod = cleanMaterial(applyGlossary(method || 'space'));
+      const target = cleanGoal.includes('ending') ? 'the ending' : `the ${cleanGoal}`;
+      return `For ${target}, keep one simple part playing. Add one ${cleanMood} colour with ${cleanMethod}: long reverb, a bell-like synth, a guitar swell or a field recording. Fade everything except the sound you want remembered.`;
+    }
+  );
+
+  text = text.replace(
+    /^Start from a clear base style, then add one borrowed colour\.?/i,
+    'Start with one plain part, then add one unusual sound that changes the mood.'
+  );
+
+  text = text.replace(
     /^Design a loop where creative restriction is repeated clearly enough to become identity, but shift register, how crowded it feels or tone colour every four bars\.?/i,
     'Make a short loop with one obvious rule. Keep the rule, but every four bars move it higher or lower, make it thinner or fuller, or change the tone colour.'
   );
@@ -478,6 +498,7 @@ function simplifyPrompt(rawPrompt = '') {
     .replace(/\bthe the vocal or chant layer\b/gi, 'the vocal or chant layer')
     .replace(/\bWork on the vocal or chant layer until attention becomes scattered; stop before repeating the part badly starts teaching the wrong feel of the body\.?/gi, 'Work on the vocal or chant layer only while it still feels focused. If it starts getting worse, pause, simplify, and return with a smaller move.')
     .replace(/\bThe musical decision should emerge after the listening body has softened\.?/gi, 'Let the next musical move come from calm listening.')
+    .replace(/\bStart from a simple starting groove or sound, then add one unusual sound colour\.?/gi, 'Start with one plain part, then add one unusual sound that changes the mood.')
     .replace(/Write a rule for composition helper based on (.*?):/i, (_match, rule) => `Use ${rule}:`)
     .replace(/Let one clear edit or mistake that becomes part of the sound guide/i, 'Let one clear edit or mistake become part of the sound and guide')
     .replace(/it may change only one of pitch, rhythm, brightness, how crowded it feels or space each phrase/gi, 'change only one thing each phrase: notes, rhythm, brightness, crowdedness or space')
@@ -554,12 +575,15 @@ function cleanMaterial(value = '') {
     .replace(/\blive drummer lock\b/gi, 'a drummer-like groove that locks in')
     .replace(/\bduple time\b/gi, 'a two- or four-beat feel')
     .replace(/\bjazz improvisation as psychedelic opening\b/gi, 'a loose opening phrase with an inward psychedelic feel')
+    .replace(/\britual[- ]like space\b/gi, 'quiet spacious sound')
+    .replace(/\bquiet spacious sound sound\b/gi, 'quiet spacious sound')
     .replace(/\bvocal or chant layer\b/gi, 'the vocal or chant layer')
     .replace(/\bthis track\b/gi, 'this part')
     .replace(/\s+/g, ' ')
     .trim();
   const clean = tidyReadableText(text);
   if (!clean) return 'the idea';
+  if (clean === 'quiet spacious sound') return 'a quiet spacious sound';
   if (clean.length <= 80) return clean;
   return `${clean.slice(0, 78).replace(/\s+\S*$/, '')}...`;
 }
