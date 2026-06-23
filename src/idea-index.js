@@ -3,7 +3,7 @@ import {
   ideaClarityScore,
   ideaIsUsable,
   normaliseIdeaPromptKey,
-} from './idea-presenter.js?v=keyfirst3.59';
+} from './idea-presenter.js?v=keyfirst3.60';
 
 const INDEX_CACHE = new WeakMap();
 

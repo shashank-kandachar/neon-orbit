@@ -1633,8 +1633,25 @@ button.entry-card {
   margin-bottom: 4px;
 }
 
+.guidance-strip strong {
+  display: block;
+  color: var(--text);
+  font-size: 0.94rem;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+
 .guidance-strip p {
   font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.guidance-strip p + p {
+  margin-top: 5px;
+}
+
+.guidance-strip b {
+  color: var(--text);
 }
 
 .setup-gear-panel {

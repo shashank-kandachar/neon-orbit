@@ -1,10 +1,10 @@
-import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.59';
-import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.59';
-import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.59';
-import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.59';
-import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.59';
-import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.59';
-import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.59';
+import { STAGES, APP_OPTIONS, DEFAULT_PROFILE } from './config.js?v=keyfirst3.60';
+import { loadBootstrapData, loadIdeas, loadIdeasForStages } from './data-loader.js?v=keyfirst3.60';
+import { generateStagePrompts, searchIdeas, buildSectionSummary } from './engine.js?v=keyfirst3.60';
+import { buildIdeaPresentation } from './idea-presenter.js?v=keyfirst3.60';
+import { formatPitchSummary, getKeyRootOptions, getPitchContext, normaliseKeyRoot } from './pitch-utils.js?v=keyfirst3.60';
+import { loadState, saveState, loadSavedPlans, savePlanSnapshot, loadIdeaFeedback, saveIdeaFeedback } from './storage.js?v=keyfirst3.60';
+import { exportPlanJson, exportPlanMarkdown } from './export-utils.js?v=keyfirst3.60';
 
 const SETUP_SCREENS = [
   { id: 'song', type: 'song', label: 'Song', blurb: 'Start fresh or reopen a saved section.' },
@@ -394,17 +394,52 @@ const GEAR_WORKFLOWS = {
   },
 };
 
+const DEFAULT_GROOVE_GUIDANCE = {
+  meaning: 'A clear pulse that gives the section something to stand on.',
+  start: 'Choose one repeating sound first, then leave enough space for the melody or texture to answer.',
+};
+
 const GROOVE_GUIDANCE = {
-  'Straight 4/4': 'Put the kick or main pulse in the body first. Let guitar and synth answer around it instead of filling every gap.',
-  'Triplet / swung': 'Let the groove lean forward. Keep one part straight so the swing feels intentional rather than loose.',
-  'Off-beat pulse': 'Place the hook or slice between the main beats. Use the downbeat as a return point, not the whole story.',
-  'Hypnotic ostinato': 'Choose a short repeating cell and change tone, filter or accent slowly over time.',
-  Polyrhythmic: 'Keep one layer simple and let another cycle across it. Count the return point before adding more parts.',
-  'Broken beat': 'Leave air around the backbeat. Let ghost notes, field sounds or muted guitar make the rhythm breathe.',
-  'Downtempo roll': 'Keep the low end relaxed and warm. Use small syncopations so the section moves without rushing.',
-  'Psytrance drive': 'Lock the bass and kick relationship first. Add movement above it, not clutter inside it.',
-  'Ambient free pulse': 'Use repeated swells, delays or gestures as the pulse. Let tempo be felt rather than counted.',
-  'Indian cyclic feel': 'Choose a cycle length and mark the return clearly. Let melodic phrases lean towards that return.',
+  'Straight 4/4': {
+    meaning: 'A steady four-beat pulse where the listener can easily feel 1, 2, 3, 4.',
+    start: 'Put the kick, bass note or muted guitar accent on the body of the beat first. Let synth, guitar and percussion answer in the gaps.',
+  },
+  'Triplet / swung': {
+    meaning: 'A rolling long-short feel, like the rhythm is leaning or bouncing instead of sitting perfectly straight.',
+    start: 'Keep one anchor straight, such as kick or drone. Let hi-hats, muted guitar or a synth phrase lean into the swung feel.',
+  },
+  'Off-beat pulse': {
+    meaning: 'The energy lands between the main beats, so the groove feels lifted and slightly floating.',
+    start: 'Count the main beat quietly, then place a chop, delay hit, guitar stab or synth pulse just after it.',
+  },
+  'Hypnotic ostinato': {
+    meaning: 'A short repeating musical pattern that becomes the identity of the section.',
+    start: 'Make a 2 to 5 note riff or rhythm and repeat it. Change only accent, tone, filter or delay every few bars so it slowly opens up.',
+  },
+  Polyrhythmic: {
+    meaning: 'Two simple patterns with different lengths play together, creating motion as they line up and separate.',
+    start: 'Keep one pattern very plain. Add a second pattern with 3, 5 or 7 hits, then wait for the moment they meet again before adding more.',
+  },
+  'Broken beat': {
+    meaning: 'A groove with deliberate gaps and interruptions, so the rhythm breathes instead of marching.',
+    start: 'Place the important kick or snare points first. Remove a few expected hits, then use muted guitar, field slices or ghost notes to answer.',
+  },
+  'Downtempo roll': {
+    meaning: 'A slow, relaxed groove that still moves forward through small pushes and warm low-end motion.',
+    start: 'Keep the bass or kick calm and rounded. Add gentle syncopation with hats, delay taps or guitar mutes without making the part feel rushed.',
+  },
+  'Psytrance drive': {
+    meaning: 'A tight kick-and-bass engine that gives the track a steady forward push.',
+    start: 'Lock the kick and bass relationship first. Put movement in filters, guitar effects or synth accents above it instead of crowding the low end.',
+  },
+  'Ambient free pulse': {
+    meaning: 'The pulse is felt through repeats, swells and delays rather than a strict drum pattern.',
+    start: 'Choose one repeating gesture, such as a swell, delay tail or field sound. Let it return gently while the tempo stays loose.',
+  },
+  'Indian cyclic feel': {
+    meaning: 'The rhythm moves in a repeating cycle with a clear return point, like coming back to home after a phrase.',
+    start: 'Choose a cycle length, then mark the return with bass, drone, clap or phrase ending. Let melodies lean towards that return.',
+  },
 };
 
 const MODE_LABELS = {
@@ -1072,7 +1107,7 @@ function cleanTimeWindow(value = '') {
 }
 
 function grooveGuidance() {
-  return GROOVE_GUIDANCE[state.profile.groove] || 'Choose one clear pulse and let the arrangement grow around it.';
+  return GROOVE_GUIDANCE[state.profile.groove] || DEFAULT_GROOVE_GUIDANCE;
 }
 
 function tempoGuidance() {
@@ -2039,6 +2074,7 @@ function renderSetup() {
     `Keep a drone or bass anchor on ${root}, then write one short phrase that returns to Sa before adding extra notes.`,
     ...ragaFeatures,
   ].filter(Boolean).filter((feature, index, list) => list.indexOf(feature) === index).slice(0, 3);
+  const grooveInfo = grooveGuidance();
 
   els.wizardBody.innerHTML = `
     <div class="setup-workspace">
@@ -2109,7 +2145,12 @@ function renderSetup() {
 
         <div class="guidance-strip">
           <div><span>Tempo</span><p>${escapeHtml(tempoGuidance())}</p></div>
-          <div><span>Groove</span><p>${escapeHtml(grooveGuidance())}</p></div>
+          <div class="groove-explain">
+            <span>Groove feel</span>
+            <strong>${escapeHtml(state.profile.groove)}</strong>
+            <p><b>Means:</b> ${escapeHtml(grooveInfo.meaning)}</p>
+            <p><b>Start:</b> ${escapeHtml(grooveInfo.start)}</p>
+          </div>
         </div>
       </section>
 

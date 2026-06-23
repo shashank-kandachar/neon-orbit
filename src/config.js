@@ -1,7 +1,7 @@
 export const STAGES = [
   { id: 'section_identity', label: '1. Define section identity', blurb: 'Set the emotional and compositional intent of the section.' },
-  { id: 'pitch_material', label: '2. Choose scale / raga / mode', blurb: 'Pick the pitch world and the behavioural logic that will guide the section.' },
-  { id: 'tempo_groove', label: '3. Choose tempo / groove / meter', blurb: 'Anchor the pulse, speed and rhythmic feel.' },
+  { id: 'pitch_material', label: '2. Use chosen key world', blurb: 'Turn the tonic, scale, mode or raga from setup into notes, intervals and behaviour for this section.' },
+  { id: 'tempo_groove', label: '3. Shape first groove', blurb: 'Turn the tempo and groove feel from setup into the first playable pulse.' },
   { id: 'section_role', label: '4. Choose role of the section', blurb: 'Clarify what the section needs to do in the journey.' },
   { id: 'rhythmic_foundation', label: '5. Build rhythmic foundation', blurb: 'Shape drums, pulse and rhythmic identity.' },
   { id: 'bass_pulse', label: '6. Build bass or pulse', blurb: 'Create the low-end movement or sustained pulse.' },
